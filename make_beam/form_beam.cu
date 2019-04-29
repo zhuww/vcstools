@@ -49,10 +49,15 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 __global__ void beamform_kernel( uint8_t *data,
                                  ComplexDouble *W,
                                  ComplexDouble *J,
-                                 double invw,
                                  ComplexDouble *Bd,
                                  float *C,
-                                 float *I )
+                                 float *I,
+                                 ComplexDouble *Bx,
+                                 ComplexDouble *By,
+                                 ComplexDouble *Nxx,
+                                 ComplexDouble *Nxy,
+                                 ComplexDouble *Nyy,
+                                 double *Ia)
 /* Layout for input arrays:
  *   data [nsamples] [nchan] [NPFB] [NREC] [NINC] -- see docs
  *   W    [NSTATION] [nchan] [NPOL]               -- weights array
@@ -72,26 +77,15 @@ __global__ void beamform_kernel( uint8_t *data,
     int ant = blockIdx.x;   /* The (ant)enna number */
     int p   = blockIdx.y;   /* The (p)ointing number */
 
-    // GPU profiling
-    clock_t start, stop;
-    double setup_t, detect_t, sum_t, stokes_t;
-    if ((p == 0) && (ant == 0) && (c == 0) && (s == 0)) start = clock();
-    
     // Calculate the beam and the noise floor
-    __shared__ double Ia[NSTATION];
-    __shared__ ComplexDouble Bx[NPOINTING*NSTATION], By[NPOINTING*NSTATION];
     ComplexDouble Dx, Dy;
     ComplexDouble WDx, WDy;
-
-    __shared__ ComplexDouble Nxx[NPOINTING*NSTATION], Nxy[NPOINTING*NSTATION],
-                             Nyy[NPOINTING*NSTATION];//Nyx[NPOINTING][NSTATION]
-
 
     /* Fix from Maceij regarding NaNs in output when running on Athena, 13 April 2018.
        Apparently the different compilers and architectures are treating what were 
        unintialised variables very differently */
-    Bx[BN_IDX(p,ant)]  = CMaked( 0.0, 0.0 );
-    By[BN_IDX(p,ant)]  = CMaked( 0.0, 0.0 );
+    Bx[V_IDX(p,s,ant,c,ns,nc)]  = CMaked( 0.0, 0.0 );
+    By[V_IDX(p,s,ant,c,ns,nc)]  = CMaked( 0.0, 0.0 );
 
     Dx  = CMaked( 0.0, 0.0 );
     Dy  = CMaked( 0.0, 0.0 );
@@ -99,167 +93,116 @@ __global__ void beamform_kernel( uint8_t *data,
     WDx = CMaked( 0.0, 0.0 );
     WDy = CMaked( 0.0, 0.0 );
 
-    Nxx[BN_IDX(p,ant)] = CMaked( 0.0, 0.0 );
-    Nxy[BN_IDX(p,ant)] = CMaked( 0.0, 0.0 );
-    //Nyx[BN_IDX(p,ant)] = CMaked( 0.0, 0.0 );
-    Nyy[BN_IDX(p,ant)] = CMaked( 0.0, 0.0 );
+    Nxx[V_IDX(p,s,ant,c,ns,nc)] = CMaked( 0.0, 0.0 );
+    Nxy[V_IDX(p,s,ant,c,ns,nc)] = CMaked( 0.0, 0.0 );
+    Nyy[V_IDX(p,s,ant,c,ns,nc)] = CMaked( 0.0, 0.0 );
 
-    if (p == 0) Ia[ant] = 0.0;
+    if (p == 0) Ia[V_IDX(p,s,ant,c,ns,nc)] = 0.0;
 
     // Calculate beamform products for each antenna, and then add them together
     // Calculate the coherent beam (B = J*W*D)
-    if ((p == 0) && (ant == 0) && (c == 0) && (s == 0))
-    {
-        stop = clock();
-        setup_t = (double)(stop - start) / CLOCKS_PER_SEC * NPOINTING * NANT;
-        start = clock();
-    }
-
     Dx  = UCMPLX4_TO_CMPLX_FLT(data[D_IDX(s,c,ant,0,nc)]);
     Dy  = UCMPLX4_TO_CMPLX_FLT(data[D_IDX(s,c,ant,1,nc)]);
 
-    if (p == 0) Ia[ant] = DETECT(Dx) + DETECT(Dy);
+    if (p == 0) Ia[V_IDX(p,s,ant,c,ns,nc)] = DETECT(Dx) + DETECT(Dy);
 
     WDx = CMuld( W[W_IDX(p,ant,c,0,nc)], Dx );
     WDy = CMuld( W[W_IDX(p,ant,c,1,nc)], Dy );
 
-    Bx[BN_IDX(p,ant)] = CAddd( CMuld( J[J_IDX(p,ant,c,0,0,nc)], WDx ),
-                               CMuld( J[J_IDX(p,ant,c,1,0,nc)], WDy ) );
-    By[BN_IDX(p,ant)] = CAddd( CMuld( J[J_IDX(p,ant,c,0,1,nc)], WDx ),
-                               CMuld( J[J_IDX(p,ant,c,1,1,nc)], WDy ) );
+    Bx[V_IDX(p,s,ant,c,ns,nc)] = CAddd( CMuld( J[J_IDX(p,ant,c,0,0,nc)], WDx ),
+                                 CMuld( J[J_IDX(p,ant,c,1,0,nc)], WDy ) );
+    By[V_IDX(p,s,ant,c,ns,nc)] = CAddd( CMuld( J[J_IDX(p,ant,c,0,1,nc)], WDx ),
+                                 CMuld( J[J_IDX(p,ant,c,1,1,nc)], WDy ) );
 
-    Nxx[BN_IDX(p,ant)] = CMuld( Bx[BN_IDX(p,ant)], CConjd(Bx[BN_IDX(p,ant)]) );
-    Nxy[BN_IDX(p,ant)] = CMuld( Bx[BN_IDX(p,ant)], CConjd(By[BN_IDX(p,ant)]) );
-    //Nyx[BN_IDX(p,ant)] = CMuld( By[BN_IDX(p,ant)], CConjd(Bx[BN_IDX(p,ant)]) );
-    Nyy[BN_IDX(p,ant)] = CMuld( By[BN_IDX(p,ant)], CConjd(By[BN_IDX(p,ant)]) );
+    Nxx[V_IDX(p,s,ant,c,ns,nc)] = CMuld( Bx[V_IDX(p,s,ant,c,ns,nc)],
+                                         CConjd(Bx[V_IDX(p,s,ant,c,ns,nc)]) );
+    Nxy[V_IDX(p,s,ant,c,ns,nc)] = CMuld( Bx[V_IDX(p,s,ant,c,ns,nc)], 
+                                         CConjd(By[V_IDX(p,s,ant,c,ns,nc)]) );
+    Nyy[V_IDX(p,s,ant,c,ns,nc)] = CMuld( By[V_IDX(p,s,ant,c,ns,nc)],
+                                         CConjd(By[V_IDX(p,s,ant,c,ns,nc)]) );
 
+}
+
+
+__global__ void ant_sum(double *Ia,
+                        ComplexDouble *Bx, 
+                        ComplexDouble *By, 
+                        ComplexDouble *Nxx, 
+                        ComplexDouble *Nxy, 
+                        ComplexDouble *Nyy, 
+                        int nant)
+{    
+    // Translate GPU block/thread numbers into meaningful names
+    int s   = threadIdx.x;  /* The (s)ample number */
+    int ns  = blockDim.x;   /* The (n)umber of (s)amples (=10000)*/
+    int c   = threadIdx.y;  /* The (c)hannel number */
+    int nc  = blockDim.y;   /* The (n)umber of (c)hannels (=128) */
+
+    int ant = blockIdx.x;   /* The (ant)enna number */
+    int p   = blockIdx.y;   /* The (p)ointing number */
+    
     // Detect the coherent beam
     // A summation over an array is faster on a GPU if you add half on array 
     // to its other half as than can be done in parallel. Then this is repeated
     // with half of the previous array until the array is down to 1.
-    __syncthreads();
 
-    if ((p == 0) && (ant == 0) && (c == 0) && (s == 0))
+    if (ant < nant)
     {
-        stop = clock();
-        detect_t = (double)(stop - start) / CLOCKS_PER_SEC * NPOINTING * NANT;
-        start = clock();
+        if (p == 0) Ia[V_IDX(p,s,ant,c,ns,nc)] += Ia[V_IDX(p,s,ant+ant,c,ns,nc)];
+        Bx[V_IDX(p,s,ant,c,ns,nc)]  = CAddd( Bx[V_IDX(p,s,ant,c,ns,nc)], 
+                                             Bx[V_IDX(p,s,ant+nant,c,ns,nc)] );
+        By[V_IDX(p,s,ant,c,ns,nc)]  = CAddd( By[V_IDX(p,s,ant,c,ns,nc)], 
+                                             By[V_IDX(p,s,ant+nant,c,ns,nc)] );
+        Nxx[V_IDX(p,s,ant,c,ns,nc)] = CAddd( Nxx[V_IDX(p,s,ant,c,ns,nc)], 
+                                             Nxx[V_IDX(p,s,ant+nant,c,ns,nc)] );
+        Nxy[V_IDX(p,s,ant,c,ns,nc)] = CAddd( Nxy[V_IDX(p,s,ant,c,ns,nc)], 
+                                             Nxy[V_IDX(p,s,ant+nant,c,ns,nc)] );
+        Nyy[V_IDX(p,s,ant,c,ns,nc)] = CAddd( Nyy[V_IDX(p,s,ant,c,ns,nc)], 
+                                             Nyy[V_IDX(p,s,ant+nant,c,ns,nc)] );
     }
-    if (ant < 64)
-    {
-        if (p == 0) Ia[ant] += Ia[ant+64];
-        Bx[BN_IDX(p,ant)] = CAddd( Bx[BN_IDX(p,ant)], Bx[BN_IDX(p,ant+64)] );
-        By[BN_IDX(p,ant)] = CAddd( By[BN_IDX(p,ant)], By[BN_IDX(p,ant+64)] );
-        Nxx[BN_IDX(p,ant)] = CAddd( Nxx[BN_IDX(p,ant)], Nxx[BN_IDX(p,ant+64)] );
-        Nxy[BN_IDX(p,ant)] = CAddd( Nxy[BN_IDX(p,ant)], Nxy[BN_IDX(p,ant+64)] );
-        //Nyx[BN_IDX(p,ant)] = CAddd( Nyx[BN_IDX(p,ant)], Nyx[BN_IDX(p,ant+64)] );
-        Nyy[BN_IDX(p,ant)] = CAddd( Nyy[BN_IDX(p,ant)], Nyy[BN_IDX(p,ant+64)] );
-    }
-    __syncthreads();
-    if (ant < 32)
-    {
-        if (p == 0) Ia[ant] += Ia[ant+32];
-        Bx[BN_IDX(p,ant)] = CAddd( Bx[BN_IDX(p,ant)], Bx[BN_IDX(p,ant+32)] );
-        By[BN_IDX(p,ant)] = CAddd( By[BN_IDX(p,ant)], By[BN_IDX(p,ant+32)] );
-        Nxx[BN_IDX(p,ant)] = CAddd( Nxx[BN_IDX(p,ant)], Nxx[BN_IDX(p,ant+32)] );
-        Nxy[BN_IDX(p,ant)] = CAddd( Nxy[BN_IDX(p,ant)], Nxy[BN_IDX(p,ant+32)] );
-        //Nyx[BN_IDX(p,ant)] = CAddd( Nyx[BN_IDX(p,ant)], Nyx[BN_IDX(p,ant+32)] );
-        Nyy[BN_IDX(p,ant)] = CAddd( Nyy[BN_IDX(p,ant)], Nyy[BN_IDX(p,ant+32)] );
-    }
-    __syncthreads();
-    if (ant < 16)
-    {
-        if (p == 0) Ia[ant] += Ia[ant+16];
-        Bx[BN_IDX(p,ant)] = CAddd( Bx[BN_IDX(p,ant)], Bx[BN_IDX(p,ant+16)] );
-        By[BN_IDX(p,ant)] = CAddd( By[BN_IDX(p,ant)], By[BN_IDX(p,ant+16)] );
-        Nxx[BN_IDX(p,ant)] = CAddd( Nxx[BN_IDX(p,ant)], Nxx[BN_IDX(p,ant+16)] );
-        Nxy[BN_IDX(p,ant)] = CAddd( Nxy[BN_IDX(p,ant)], Nxy[BN_IDX(p,ant+16)] );
-        //Nyx[BN_IDX(p,ant)] = CAddd( Nyx[BN_IDX(p,ant)], Nyx[BN_IDX(p,ant+16)] );
-        Nyy[BN_IDX(p,ant)] = CAddd( Nyy[BN_IDX(p,ant)], Nyy[BN_IDX(p,ant+16)] );
-    }
-    __syncthreads();
-    if (ant < 8)
-    {
-        if (p == 0) Ia[ant] += Ia[ant+8];
-        Bx[BN_IDX(p,ant)] = CAddd( Bx[BN_IDX(p,ant)], Bx[BN_IDX(p,ant+8)] );
-        By[BN_IDX(p,ant)] = CAddd( By[BN_IDX(p,ant)], By[BN_IDX(p,ant+8)] );
-        Nxx[BN_IDX(p,ant)] = CAddd( Nxx[BN_IDX(p,ant)], Nxx[BN_IDX(p,ant+8)] );
-        Nxy[BN_IDX(p,ant)] = CAddd( Nxy[BN_IDX(p,ant)], Nxy[BN_IDX(p,ant+8)] );
-        //Nyx[BN_IDX(p,ant)] = CAddd( Nyx[BN_IDX(p,ant)], Nyx[BN_IDX(p,ant+8)] );
-        Nyy[BN_IDX(p,ant)] = CAddd( Nyy[BN_IDX(p,ant)], Nyy[BN_IDX(p,ant+8)] );
-    }
-    __syncthreads();
-    if (ant < 4)
-    {
-        if (p == 0) Ia[ant] += Ia[ant+4];
-        Bx[BN_IDX(p,ant)] = CAddd( Bx[BN_IDX(p,ant)], Bx[BN_IDX(p,ant+4)] );
-        By[BN_IDX(p,ant)] = CAddd( By[BN_IDX(p,ant)], By[BN_IDX(p,ant+4)] );
-        Nxx[BN_IDX(p,ant)] = CAddd( Nxx[BN_IDX(p,ant)], Nxx[BN_IDX(p,ant+4)] );
-        Nxy[BN_IDX(p,ant)] = CAddd( Nxy[BN_IDX(p,ant)], Nxy[BN_IDX(p,ant+4)] );
-        //Nyx[BN_IDX(p,ant)] = CAddd( Nyx[BN_IDX(p,ant)], Nyx[BN_IDX(p,ant+4)] );
-        Nyy[BN_IDX(p,ant)] = CAddd( Nyy[BN_IDX(p,ant)], Nyy[BN_IDX(p,ant+4)] );
-    }
-    __syncthreads();
-    if (ant < 2)
-    {
-        if (p == 0) Ia[ant] += Ia[ant+2];
-        Bx[BN_IDX(p,ant)] = CAddd( Bx[BN_IDX(p,ant)], Bx[BN_IDX(p,ant+2)] );
-        By[BN_IDX(p,ant)] = CAddd( By[BN_IDX(p,ant)], By[BN_IDX(p,ant+2)] );
-        Nxx[BN_IDX(p,ant)] = CAddd( Nxx[BN_IDX(p,ant)], Nxx[BN_IDX(p,ant+2)] );
-        Nxy[BN_IDX(p,ant)] = CAddd( Nxy[BN_IDX(p,ant)], Nxy[BN_IDX(p,ant+2)] );
-        //Nyx[BN_IDX(p,ant)] = CAddd( Nyx[BN_IDX(p,ant)], Nyx[BN_IDX(p,ant+2)] );
-        Nyy[BN_IDX(p,ant)] = CAddd( Nyy[BN_IDX(p,ant)], Nyy[BN_IDX(p,ant+2)] );
-    }
-    __syncthreads();
-    if (ant < 1)
-    {
-        if (p == 0) Ia[ant] += Ia[ant+1];
-        Bx[BN_IDX(p,ant)] = CAddd( Bx[BN_IDX(p,ant)], Bx[BN_IDX(p,ant+1)] );
-        By[BN_IDX(p,ant)] = CAddd( By[BN_IDX(p,ant)], By[BN_IDX(p,ant+1)] );
-        Nxx[BN_IDX(p,ant)] = CAddd( Nxx[BN_IDX(p,ant)], Nxx[BN_IDX(p,ant+1)] );
-        Nxy[BN_IDX(p,ant)] = CAddd( Nxy[BN_IDX(p,ant)], Nxy[BN_IDX(p,ant+1)] );
-        //Nyx[BN_IDX(p,ant)] = CAddd( Nyx[BN_IDX(p,ant)], Nyx[BN_IDX(p,ant+1)] );
-        Nyy[BN_IDX(p,ant)] = CAddd( Nyy[BN_IDX(p,ant)], Nyy[BN_IDX(p,ant+1)] );
-    }
-    __syncthreads();
-    if ((p == 0) && (ant == 0) && (c == 0) && (s == 0))
-    {
-        stop = clock();
-        sum_t = (double)(stop - start) / CLOCKS_PER_SEC * NPOINTING * NANT;
-        start = clock();
+} 
 
-    }
-    
+__global__ void form_stokes(ComplexDouble *Bd,
+                            float *C,
+                            float *I,
+                            ComplexDouble *Bx, 
+                            ComplexDouble *By, 
+                            ComplexDouble *Nxx, 
+                            ComplexDouble *Nxy, 
+                            ComplexDouble *Nyy, 
+                            double *Ia,
+                            double invw)
+{    
+    // Translate GPU block/thread numbers into meaningful names
+    int s   = threadIdx.x;  /* The (s)ample number */
+    int ns  = blockDim.x;   /* The (n)umber of (s)amples (=10000)*/
+    int c   = threadIdx.y;  /* The (c)hannel number */
+    int nc  = blockDim.y;   /* The (n)umber of (c)hannels (=128) */
+
+    int ant = 0;   /* The (ant)enna number */
+    int p   = blockIdx.x;   /* The (p)ointing number */
+
+
     // Form the stokes parameters for the coherent beam
     // Only doing it for ant 0 so that it only prints once
-    if (ant == 0)
-    {
-        float bnXX = DETECT(Bx[BN_IDX(p,0)]) - CReald(Nxx[BN_IDX(p,0)]);
-        float bnYY = DETECT(By[BN_IDX(p,0)]) - CReald(Nyy[BN_IDX(p,0)]);
-        ComplexDouble bnXY = CSubd(
-                                 CMuld( Bx[BN_IDX(p,0)], CConjd( By[BN_IDX(p,0)] ) ),
-                                 Nxy[BN_IDX(p,0)] );
+    float bnXX = DETECT(Bx[V_IDX(p,s,ant,c,ns,nc)]) - CReald(Nxx[V_IDX(p,s,ant,c,ns,nc)]);
+    float bnYY = DETECT(By[V_IDX(p,s,ant,c,ns,nc)]) - CReald(Nyy[V_IDX(p,s,ant,c,ns,nc)]);
+    ComplexDouble bnXY = CSubd( CMuld( Bx[V_IDX(p,s,ant,c,ns,nc)], 
+                                       CConjd( By[V_IDX(p,s,ant,c,ns,nc)] ) ),
+                                Nxy[V_IDX(p,s,ant,c,ns,nc)] );
 
-        // The incoherent beam
-        I[I_IDX(s,c,nc)] = Ia[0];
+    // The incoherent beam
+    I[I_IDX(s,c,nc)] = Ia[V_IDX(0,s,ant,c,ns,nc)];
 
-        // Stokes I, Q, U, V:
-        C[C_IDX(p,s,0,c,ns,nc)] = invw*(bnXX + bnYY);
-        C[C_IDX(p,s,1,c,ns,nc)] = invw*(bnXX - bnYY);
-        C[C_IDX(p,s,2,c,ns,nc)] =  2.0*invw*CReald( bnXY );
-        C[C_IDX(p,s,3,c,ns,nc)] = -2.0*invw*CImagd( bnXY );
+    // Stokes I, Q, U, V:
+    C[C_IDX(p,s,0,c,ns,nc)] = invw*(bnXX + bnYY);
+    C[C_IDX(p,s,1,c,ns,nc)] = invw*(bnXX - bnYY);
+    C[C_IDX(p,s,2,c,ns,nc)] =  2.0*invw*CReald( bnXY );
+    C[C_IDX(p,s,3,c,ns,nc)] = -2.0*invw*CImagd( bnXY );
 
-        // The beamformed products
-        Bd[B_IDX(p,s,c,0,ns,nc)] = Bx[BN_IDX(p,0)];
-        Bd[B_IDX(p,s,c,1,ns,nc)] = By[BN_IDX(p,0)];
-    }
-    if ((p == 0) && (ant == 0) && (c == 0) && (s == 0))
-    {
-        stop = clock();
-        stokes_t = (double)(stop - start) / CLOCKS_PER_SEC * NPOINTING * NANT;
-        printf("Time:  setup: % f detect: %f    sum: %f     stokes: %f\n", setup_t, detect_t, sum_t, stokes_t);
-    }
-    
+    // The beamformed products
+    Bd[B_IDX(p,s,c,0,ns,nc)] = Bx[V_IDX(p,s,ant,c,ns,nc)];
+    Bd[B_IDX(p,s,c,1,ns,nc)] = By[V_IDX(p,s,ant,c,ns,nc)];
 }
 
 __global__ void flatten_bandpass_I_kernel(float *I,
@@ -417,13 +360,26 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
     //               index=threadIdx.y size=blockDim.y)
     dim3 samples_chan(opts->sample_rate, nchan);
     dim3 stat_point(NSTATION, npointing);
+    // calibrate and apply delays (geometric ect)
     beamform_kernel<<<stat_point, samples_chan>>>(
-            (*g)->d_data, (*g)->d_W, (*g)->d_J, invw, (*g)->d_Bd, (*g)->d_coh, (*g)->d_incoh );
+            (*g)->d_data, (*g)->d_W, (*g)->d_J, (*g)->d_Bd, 
+            (*g)->d_coh, (*g)->d_incoh, (*g)->d_Bx, (*g)->d_By, 
+            (*g)->d_Nxx, (*g)->d_Nxy, (*g)->d_Nyy, (*g)->d_incoh_volt);
     //cudaDeviceSynchronize();
-    // sync not required between kernel queues since each stream acts like a FIFO queue
-    // so all instances of the above kernel will complete before we move to the next
-    // we are using the "default" stream since we don't specify any stream id
+    
+    // sum over antennas/tile
+    for (int nant = NSTATION/2; nant < 1; nant = nant / 2)
+    {
+        ant_sum<<<stat_point, samples_chan>>>((*g)->d_incoh_volt, (*g)->d_Bx, (*g)->d_By, 
+                            (*g)->d_Nxx, (*g)->d_Nxy, (*g)->d_Nyy, 
+                            nant);
+    }
 
+    //form stokes
+    form_stokes<<<npointing, samples_chan>>>((*g)->d_Bx, (*g)->d_coh, (*g)->d_incoh, 
+                                              (*g)->d_Bx, (*g)->d_By,
+                                              (*g)->d_Nxx, (*g)->d_Nxy, (*g)->d_Nyy,
+                                              (*g)->d_incoh_volt, invw);
     // 1 block per pointing direction, hence the 1 for now
     // TODO check if these actually work, can't see them return values.
     // The incoh kernal also takes 40 second for some reason so commenting out
@@ -470,12 +426,17 @@ void malloc_formbeam( struct gpu_formbeam_arrays **g, unsigned int sample_rate,
     (*g)->Bd_size    = npointing * sample_rate * nchan * npol * sizeof(ComplexDouble);
     (*g)->W_size     = npointing * nstation * nchan * npol * sizeof(ComplexDouble);
     (*g)->J_size     = npointing * nstation * nchan * npol * npol * sizeof(ComplexDouble);
+    (*g)->volt_size  = npointing * sample_rate * nstation * nchan * sizeof(ComplexDouble);
 
     // Allocate host memory
     (*g)->W  = (ComplexDouble *)malloc( (*g)->W_size );
     (*g)->J  = (ComplexDouble *)malloc( (*g)->J_size );
     (*g)->Bd = (ComplexDouble *)malloc( (*g)->Bd_size );
-
+    
+    printf("%d GB GPU memory allocated\n", ((*g)->W_size + (*g)->J_size + 
+                                            (*g)->Bd_size + 2 * (*g)->data_size +
+                                            (*g)->coh_size + (*g)->incoh_size +
+                                            5 * (*g)->volt_size) /1000000000 );
 
     // Allocate device memory
     gpuErrchk(cudaMalloc( (void **)&(*g)->d_W,     (*g)->W_size ));
@@ -484,11 +445,13 @@ void malloc_formbeam( struct gpu_formbeam_arrays **g, unsigned int sample_rate,
     gpuErrchk(cudaMalloc( (void **)&(*g)->d_data,  (*g)->data_size ));
     gpuErrchk(cudaMalloc( (void **)&(*g)->d_coh,   (*g)->coh_size ));
     gpuErrchk(cudaMalloc( (void **)&(*g)->d_incoh, (*g)->incoh_size ));
+    gpuErrchk(cudaMalloc( (void **)&(*g)->d_Bx,    (*g)->volt_size ));
+    gpuErrchk(cudaMalloc( (void **)&(*g)->d_By,    (*g)->volt_size ));
+    gpuErrchk(cudaMalloc( (void **)&(*g)->d_Nxx,   (*g)->volt_size ));
+    gpuErrchk(cudaMalloc( (void **)&(*g)->d_Nxy,   (*g)->volt_size ));
+    gpuErrchk(cudaMalloc( (void **)&(*g)->d_Nyy,   (*g)->volt_size ));
+    gpuErrchk(cudaMalloc( (void **)&(*g)->d_incoh_volt,   (*g)->data_size));
 
-    printf("%d GB GPU memory allocated\n", ((*g)->W_size + (*g)->J_size + 
-                                            (*g)->Bd_size + (*g)->data_size +
-                                            (*g)->coh_size + (*g)->incoh_size)
-                                            /1000000000 );
 }
 
 void free_formbeam( struct gpu_formbeam_arrays **g )

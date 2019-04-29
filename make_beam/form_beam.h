@@ -28,9 +28,13 @@ struct gpu_formbeam_arrays
     size_t Bd_size;
     size_t W_size;
     size_t J_size;
+    size_t volt_size;
     ComplexDouble *W, *d_W;
     ComplexDouble *J, *d_J;
     ComplexDouble *Bd, *d_Bd;
+    ComplexDouble *d_Bx, *d_By;
+    ComplexDouble *d_Nxx, *d_Nxy, *d_Nyy;
+    double  *d_incoh_volt;
     uint8_t *d_data;
     float   *d_coh;
     float   *d_incoh;
@@ -69,6 +73,11 @@ void free_formbeam( struct gpu_formbeam_arrays **g );
                                 (s)  * ((nc)*NSTOKES)      + \
                                 (st) *  (nc)               + \
                                 (c))
+
+#define V_IDX(p,s,a,c,ns,nc)  ((p)  * ((ns)*NANT*(nc)) + \
+                               (s)  * (NANT*(nc))      + \
+                               (a)  * ((nc))           + \
+                               (c))
 
 #define I_IDX(s,c,nc)          ((s)*(nc) + (c))
 

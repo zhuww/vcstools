@@ -212,9 +212,7 @@ int main(int argc, char **argv)
     //TODO I think i only need one fil
 
     // Memory for fil_ramps is allocated here:
-    ComplexDouble **fil_ramps  = NULL;
-    ComplexDouble **fil_ramps1 = apply_mult_phase_ramps( fil, fil_size, nchan );
-    ComplexDouble **fil_ramps2 = apply_mult_phase_ramps( fil, fil_size, nchan );
+    ComplexDouble **fil_ramps  = apply_mult_phase_ramps( fil, fil_size, nchan );
 
     // Populate the relevant header structs
     populate_psrfits_header( pf, opts.metafits, opts.obsid, opts.time_utc,
@@ -276,30 +274,20 @@ int main(int argc, char **argv)
     /* Allocate host and device memory for the use of the cu_form_beam function */
     // Declaring pointers to the structs so the memory can be alternated
     struct gpu_formbeam_arrays* gf;
-    struct gpu_formbeam_arrays* gf1;
-    struct gpu_formbeam_arrays* gf2;
-    gf1 = (struct gpu_formbeam_arrays *) malloc(sizeof(struct gpu_formbeam_arrays));
-    gf2 = (struct gpu_formbeam_arrays *) malloc(sizeof(struct gpu_formbeam_arrays));
+    gf = (struct gpu_formbeam_arrays *) malloc(sizeof(struct gpu_formbeam_arrays));
     
     
     struct gpu_ipfb_arrays* gi;
-    struct gpu_ipfb_arrays* gi1;
-    struct gpu_ipfb_arrays* gi2;
-    gi1 = (struct gpu_ipfb_arrays *) malloc(sizeof(struct gpu_ipfb_arrays));
-    gi2 = (struct gpu_ipfb_arrays *) malloc(sizeof(struct gpu_ipfb_arrays));
+    gi = (struct gpu_ipfb_arrays *) malloc(sizeof(struct gpu_ipfb_arrays));
     #ifdef HAVE_CUDA
-    malloc_formbeam( &gf1, opts.sample_rate, nstation, nchan, npol,
-            outpol_coh, outpol_incoh, npointing );
-    malloc_formbeam( &gf2, opts.sample_rate, nstation, nchan, npol,
+    malloc_formbeam( &gf, opts.sample_rate, nstation, nchan, npol,
             outpol_coh, outpol_incoh, npointing );
 
     if (opts.out_uvdif)
     {
-        malloc_ipfb( &gi1, ntaps, opts.sample_rate, nchan, npol, fil_size, npointing );
-        malloc_ipfb( &gi2, ntaps, opts.sample_rate, nchan, npol, fil_size, npointing );
+        malloc_ipfb( &gi, ntaps, opts.sample_rate, nchan, npol, fil_size, npointing );
         // Below may need a npointing update but I don't think it's used
-        cu_load_filter( fil_ramps1, &gi1, nchan );
-        cu_load_filter( fil_ramps2, &gi2, nchan );
+        cu_load_filter( fil_ramps, &gi, nchan );
     }
     #endif
 
@@ -395,24 +383,18 @@ int main(int argc, char **argv)
                 if (file_no%2 == 0)
                 {
                    data = data1;
-                   gi = gi1;
-                   gf = gf1;
                    data_buffer_coh   = data_buffer_coh1;
                    data_buffer_incoh = data_buffer_incoh1;
                    data_buffer_vdif  = data_buffer_vdif1;
                    data_buffer_uvdif = data_buffer_uvdif2;
-                   fil_ramps = fil_ramps1;
                 }
                 else
                 {
                    data = data2;
-                   gi = gi2;
-                   gf = gf2;
                    data_buffer_coh   = data_buffer_coh2;
                    data_buffer_incoh = data_buffer_incoh2;
                    data_buffer_vdif  = data_buffer_vdif2;
                    data_buffer_uvdif = data_buffer_uvdif2;
-                   fil_ramps = fil_ramps2;
                 }
 
                 // Waits until it can start the calc
@@ -582,11 +564,9 @@ int main(int argc, char **argv)
     int ch;
     for (ch = 0; ch < nchan; ch++)
     {
-        free( fil_ramps1[ch] );
-        free( fil_ramps2[ch] );
+        free( fil_ramps[ch] );
     }
-    free( fil_ramps1 );
-    free( fil_ramps2 );
+    free( fil_ramps );
     fprintf(stderr, "free mi\n");
     destroy_metafits_info( &mi );
     //free( data_buffer_coh    );
@@ -656,12 +636,10 @@ int main(int argc, char **argv)
     }
     fprintf(stderr, "free gf\n");
     #ifdef HAVE_CUDA
-    free_formbeam( &gf1 );
-    free_formbeam( &gf2 );
+    free_formbeam( &gf );
     if (opts.out_uvdif)
     {
-        free_ipfb( &gi1 );
-        free_ipfb( &gi2 );
+        free_ipfb( &gi );
     }
     #endif
 
