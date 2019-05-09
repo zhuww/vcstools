@@ -98,6 +98,7 @@ int main(int argc, char **argv)
     const int npol         = 2;      // (X,Y)
     const int outpol_coh   = 4;      // (I,Q,U,V)
     const int outpol_incoh = 1;      // ("I")
+    const int nchunk       = 10;     // How many chunks to split a second into
 
     float vgain = 1.0; // This is re-calculated every second for the VDIF output
     float ugain = 1.0; // This is re-calculated every second for the VDIF output
@@ -281,7 +282,7 @@ int main(int argc, char **argv)
     gi = (struct gpu_ipfb_arrays *) malloc(sizeof(struct gpu_ipfb_arrays));
     #ifdef HAVE_CUDA
     malloc_formbeam( &gf, opts.sample_rate, nstation, nchan, npol,
-            outpol_coh, outpol_incoh, npointing );
+                     outpol_coh, outpol_incoh, npointing, nchunk );
 
     if (opts.out_uvdif)
     {
@@ -450,7 +451,8 @@ int main(int argc, char **argv)
                 #ifdef HAVE_CUDA
                 cu_form_beam( data, &opts, complex_weights_array, invJi, file_no,
                               npointing, nstation, nchan, npol, outpol_coh, invw, &gf,
-                              detected_beam, data_buffer_coh, data_buffer_incoh );
+                              detected_beam, data_buffer_coh, data_buffer_incoh,
+                              nchunk );
                 #else
                 form_beam( data, &opts, complex_weights_array, invJi, file_no,
                            nstation, nchan, npol, outpol_coh, outpol_incoh, invw,

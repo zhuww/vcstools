@@ -296,7 +296,8 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
                    int npointing, int nstation, int nchan,
                    int npol, int outpol_coh, double invw,
                    struct gpu_formbeam_arrays **g,
-                   ComplexDouble ****detected_beam, float *coh, float *incoh )
+                   ComplexDouble ****detected_beam, float *coh, float *incoh,
+                   int nchunk )
 /* The CPU version of the beamforming operations, using OpenMP for
  * parallelisation.
  *
@@ -349,53 +350,67 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
     }
 
     // Copy the data to the device
-    gpuErrchk(cudaMemcpy( (*g)->d_data, data,    (*g)->data_size, cudaMemcpyHostToDevice ));
     gpuErrchk(cudaMemcpy( (*g)->d_W,    (*g)->W, (*g)->W_size,    cudaMemcpyHostToDevice ));
     gpuErrchk(cudaMemcpy( (*g)->d_J,    (*g)->J, (*g)->J_size,    cudaMemcpyHostToDevice ));
     
-    // Call the kernels
-    // sammples_chan(index=blockIdx.x  size=gridDim.x,
-    //               index=blockIdx.y  size=gridDim.y)
-    // stat_point   (index=threadIdx.x size=blockDim.x,
-    //               index=threadIdx.y size=blockDim.y)
-    dim3 samples_chan(opts->sample_rate, nchan);
-    dim3 stat_point(NSTATION, npointing);
-    // calibrate and apply delays (geometric ect)
-    beamform_kernel<<<stat_point, samples_chan>>>(
-            (*g)->d_data, (*g)->d_W, (*g)->d_J, (*g)->d_Bd, 
-            (*g)->d_coh, (*g)->d_incoh, (*g)->d_Bx, (*g)->d_By, 
-            (*g)->d_Nxx, (*g)->d_Nxy, (*g)->d_Nyy, (*g)->d_incoh_volt);
-    //cudaDeviceSynchronize();
-    
-    // sum over antennas/tile
-    for (int nant = NSTATION/2; nant < 1; nant = nant / 2)
-    {
-        ant_sum<<<stat_point, samples_chan>>>((*g)->d_incoh_volt, (*g)->d_Bx, (*g)->d_By, 
-                            (*g)->d_Nxx, (*g)->d_Nxy, (*g)->d_Nyy, 
-                            nant);
-    }
+    // Divide the gpu calculation into multiple time chunks so there is enough room on the GPU
+    int chunk_size = opts->sample_rate / nchunk;
+    for (int ichunk = 0; ichunk < nchunk; ichunk++)
+    {    
+        fprintf( stderr, "memcpy %d", ichunk);
+        gpuErrchk(cudaMemcpy( (*g)->d_data + ichunk * chunk_size * nstation * nchan * npol, data,
+                              (*g)->data_size / nchunk, cudaMemcpyHostToDevice ));
+        
+        // Call the kernels
+        // sammples_chan(index=blockIdx.x  size=gridDim.x,
+        //               index=blockIdx.y  size=gridDim.y)
+        // stat_point   (index=threadIdx.x size=blockDim.x,
+        //               index=threadIdx.y size=blockDim.y)
+        dim3 samples_chan(opts->sample_rate / nchunk, nchan);
+        dim3 stat_point(NSTATION, npointing);
+        // calibrate and apply delays (geometric ect)
+        fprintf( stderr, "beamform %d", ichunk);
+        beamform_kernel<<<stat_point, samples_chan>>>(
+                (*g)->d_data, (*g)->d_W, (*g)->d_J, (*g)->d_Bd, 
+                (*g)->d_coh, (*g)->d_incoh, (*g)->d_Bx, (*g)->d_By, 
+                (*g)->d_Nxx, (*g)->d_Nxy, (*g)->d_Nyy, (*g)->d_incoh_volt);
+        //cudaDeviceSynchronize();
+        
+        // sum over antennas/tile
+        fprintf( stderr, "ant sum %d", ichunk);
+        for (int nant = NSTATION/2; nant < 1; nant = nant / 2)
+        {
+            ant_sum<<<stat_point, samples_chan>>>((*g)->d_incoh_volt, (*g)->d_Bx, (*g)->d_By, 
+                                (*g)->d_Nxx, (*g)->d_Nxy, (*g)->d_Nyy, 
+                                nant);
+        }
 
-    //form stokes
-    form_stokes<<<npointing, samples_chan>>>((*g)->d_Bx, (*g)->d_coh, (*g)->d_incoh, 
-                                              (*g)->d_Bx, (*g)->d_By,
-                                              (*g)->d_Nxx, (*g)->d_Nxy, (*g)->d_Nyy,
-                                              (*g)->d_incoh_volt, invw);
-    // 1 block per pointing direction, hence the 1 for now
-    // TODO check if these actually work, can't see them return values.
-    // The incoh kernal also takes 40 second for some reason so commenting out
-    //flatten_bandpass_I_kernel<<<1, nchan>>>((*g)->d_incoh, opts->sample_rate);
-    //cudaDeviceSynchronize();
+        //form stokes
+        fprintf( stderr, "stoke %d", ichunk);
+        form_stokes<<<npointing, samples_chan>>>((*g)->d_Bx, (*g)->d_coh, (*g)->d_incoh, 
+                                                  (*g)->d_Bx, (*g)->d_By,
+                                                  (*g)->d_Nxx, (*g)->d_Nxy, (*g)->d_Nyy,
+                                                  (*g)->d_incoh_volt, invw);
+        // 1 block per pointing direction, hence the 1 for now
+        // TODO check if these actually work, can't see them return values.
+        // The incoh kernal also takes 40 second for some reason so commenting out
+        //flatten_bandpass_I_kernel<<<1, nchan>>>((*g)->d_incoh, opts->sample_rate);
+        //cudaDeviceSynchronize();
 
-    // now do the same for the coherent beam
-    dim3 chan_stokes(nchan, outpol_coh);
-    //flatten_bandpass_C_kernel<<<npointing, chan_stokes>>>((*g)->d_coh, opts->sample_rate);
-    //cudaDeviceSynchronize(); // Memcpy acts as a synchronize step so don't sync here
-    
-    // Copy the results back into host memory
-    gpuErrchk(cudaMemcpy( (*g)->Bd, (*g)->d_Bd,    (*g)->Bd_size,    cudaMemcpyDeviceToHost ));
-    gpuErrchk(cudaMemcpy( incoh,    (*g)->d_incoh, (*g)->incoh_size, cudaMemcpyDeviceToHost ));
-    gpuErrchk(cudaMemcpy( coh,      (*g)->d_coh,   (*g)->coh_size,   cudaMemcpyDeviceToHost ));
-    
+        // now do the same for the coherent beam
+        dim3 chan_stokes(nchan, outpol_coh);
+        //flatten_bandpass_C_kernel<<<npointing, chan_stokes>>>((*g)->d_coh, opts->sample_rate);
+        //cudaDeviceSynchronize(); // Memcpy acts as a synchronize step so don't sync here
+        
+        // Copy the results back into host memory
+        gpuErrchk(cudaMemcpy( (*g)->Bd + ichunk * chunk_size * nchan * npol , 
+                              (*g)->d_Bd,    (*g)->Bd_size / nchunk,    cudaMemcpyDeviceToHost ));
+
+        gpuErrchk(cudaMemcpy( incoh + ichunk * chunk_size * nchan * 1,    
+                              (*g)->d_incoh, (*g)->incoh_size / nchunk, cudaMemcpyDeviceToHost ));
+        gpuErrchk(cudaMemcpy( coh + ichunk * chunk_size * nchan * 4,      
+                              (*g)->d_coh,   (*g)->coh_size / nchunk,   cudaMemcpyDeviceToHost ));
+    } 
     // Copy the data back from Bd back into the detected_beam array
     // Make sure we put it back into the correct half of the array, depending
     // on whether this is an even or odd second.
@@ -417,16 +432,17 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
 }
 
 void malloc_formbeam( struct gpu_formbeam_arrays **g, unsigned int sample_rate,
-        int nstation, int nchan, int npol, int outpol_coh, int outpol_incoh, int npointing)
+        int nstation, int nchan, int npol, int outpol_coh, int outpol_incoh, 
+        int npointing, int nchunk)
 {
     // Calculate array sizes for host and device
-    (*g)->coh_size   = npointing * sample_rate * outpol_coh   * nchan * sizeof(float);
-    (*g)->incoh_size = sample_rate * outpol_incoh * nchan * sizeof(float);
-    (*g)->data_size  = sample_rate * nstation * nchan * npol * sizeof(uint8_t);
-    (*g)->Bd_size    = npointing * sample_rate * nchan * npol * sizeof(ComplexDouble);
+    (*g)->coh_size   = npointing * sample_rate * outpol_coh * nchan / nchunk * sizeof(float);
+    (*g)->incoh_size = sample_rate * outpol_incoh * nchan / nchunk * sizeof(float);
+    (*g)->data_size  = sample_rate * nstation * nchan * npol / nchunk * sizeof(uint8_t);
+    (*g)->Bd_size    = npointing * sample_rate * nchan * npol / nchunk * sizeof(ComplexDouble);
     (*g)->W_size     = npointing * nstation * nchan * npol * sizeof(ComplexDouble);
     (*g)->J_size     = npointing * nstation * nchan * npol * npol * sizeof(ComplexDouble);
-    (*g)->volt_size  = npointing * sample_rate * nstation * nchan * sizeof(ComplexDouble);
+    (*g)->volt_size  = npointing * sample_rate * nstation * nchan / nchunk * sizeof(ComplexDouble);
 
     // Allocate host memory
     (*g)->W  = (ComplexDouble *)malloc( (*g)->W_size );
