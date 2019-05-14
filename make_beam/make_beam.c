@@ -98,7 +98,7 @@ int main(int argc, char **argv)
     const int npol         = 2;      // (X,Y)
     const int outpol_coh   = 4;      // (I,Q,U,V)
     const int outpol_incoh = 1;      // ("I")
-    const int nchunk       = 10;     // How many chunks to split a second into
+    int nchunk       = 10;     // How many chunks to split a second into
 
     float vgain = 1.0; // This is re-calculated every second for the VDIF output
     float ugain = 1.0; // This is re-calculated every second for the VDIF output
@@ -241,6 +241,7 @@ int main(int argc, char **argv)
     
     // Create array for holding the raw data
     int bytes_per_file = opts.sample_rate * nstation * npol * nchan;
+    fprintf( stderr, "data size: %d\n", bytes_per_file * sizeof(uint8_t));
     uint8_t *data;
     uint8_t *data1 = (uint8_t *)malloc( bytes_per_file * sizeof(uint8_t) );
     assert(data1);
@@ -274,10 +275,7 @@ int main(int argc, char **argv)
 
     /* Allocate host and device memory for the use of the cu_form_beam function */
     // Declaring pointers to the structs so the memory can be alternated
-    struct gpu_formbeam_arrays* gf;
-    gf = (struct gpu_formbeam_arrays *) malloc(sizeof(struct gpu_formbeam_arrays));
-    
-    
+    struct gpu_formbeam_arrays gf;
     struct gpu_ipfb_arrays* gi;
     gi = (struct gpu_ipfb_arrays *) malloc(sizeof(struct gpu_ipfb_arrays));
     #ifdef HAVE_CUDA
@@ -328,7 +326,7 @@ int main(int argc, char **argv)
     int exit_check = 0;
     // Sets up a parallel for loop for each of the available thread and 
     // assigns a section to each thread
-    #pragma omp parallel for shared(read_check, calc_check, write_check, pf) private( thread_no, file_no, p, exit_check, gf, gi, data, data_buffer_coh, data_buffer_incoh, data_buffer_vdif, data_buffer_uvdif, fil_ramps)
+    #pragma omp parallel for shared(read_check, calc_check, write_check, pf) private( thread_no, file_no, p, exit_check, gi, data, data_buffer_coh, data_buffer_incoh, data_buffer_vdif, data_buffer_uvdif, fil_ramps)
     for (thread_no = 0; thread_no < nthread; ++thread_no)
     {
         // Read section
