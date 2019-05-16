@@ -313,6 +313,29 @@ void psrfits_write_second( struct psrfits *pf, float *data_buffer, int nchan,
     int pointing_offset = p * sec_size;
     float *pointing_buffer  = malloc( sec_size * sizeof(float) );
     memcpy(pointing_buffer, data_buffer + pointing_offset, sec_size * sizeof(float) );
+    
+    /*int pbi = 0;
+    int di;
+    for ( int s  = 0; s  < nsamples ; s++  )
+    for ( int sp = 0; sp < outpol   ; sp++ )
+    for ( int c  = 0; c  < nchan    ; c++  )
+    {
+        di = s  * nchan * outpol * npointing  + \
+             p  * nchan * outpol              + \
+             sp * nchan                       + \
+             c;
+        pointing_buffer[pbi] = data_buffer[di];
+        pbi ++;
+    }*/
+
+    /*for ( int s  = 0; s  < nsamples ; s++  )
+    {
+        memcpy(pointing_buffer + s * nchan * outpol, 
+               data_buffer     + s * nchan * outpol * npointing  + \
+                                 p * nchan * outpol, 
+               nchan * outpol * sizeof(float) );
+    }*/
+    
     float_to_unit8( pointing_buffer, sec_size, out_buffer_8);
     
     memcpy( pf->sub.data, out_buffer_8, pf->sub.bytes_per_subint );
@@ -331,4 +354,21 @@ void psrfits_write_second( struct psrfits *pf, float *data_buffer, int nchan,
     free( out_buffer_8 );
 }
 
-
+void psrfits_reorder( float *data_buffer, float *reorder_buffer, int nchan,
+                     int outpol, int npointing, int nsamples)
+{
+    int pbi = 0;
+    int di;
+    for ( int p  = 0; p  < npointing; p++  )
+    for ( int s  = 0; s  < nsamples ; s++  )
+    for ( int sp = 0; sp < outpol   ; sp++ )
+    for ( int c  = 0; c  < nchan    ; c++  )
+    {
+        di = s  * nchan * outpol * npointing  + \
+             p  * nchan * outpol              + \
+             sp * nchan                       + \
+             c;
+        reorder_buffer[pbi] = data_buffer[di];
+        pbi ++;
+    }
+}

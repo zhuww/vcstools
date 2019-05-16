@@ -43,7 +43,7 @@ struct gpu_formbeam_arrays
 
 void malloc_formbeam( struct gpu_formbeam_arrays *g, unsigned int sample_rate,
                       int nstation, int nchan, int npol, int outpol_coh, 
-                      int outpol_incoh, int npointing, int nchunk);
+                      int outpol_incoh, int npointing, int nchunk, float clock);
 void free_formbeam( struct gpu_formbeam_arrays *g );
 
 /* Calculating array indices for GPU inputs and outputs */
@@ -65,7 +65,7 @@ void free_formbeam( struct gpu_formbeam_arrays *g );
                                (p1) * (NPOL)                + \
                                (p2))
 
-#define B_IDX(p,s,c,pol,ns,nc) ((p)  * (NPOL*(nc)*(ns))   + \
+#define B_IDX(p,s,c,pol,np,nc) ((p)  * (NPOL*(nc)*(ns))   + \
                                 (s)  * (NPOL*(nc))        + \
                                 (c)  * (NPOL)             + \
                                 (pol))
@@ -75,8 +75,8 @@ void free_formbeam( struct gpu_formbeam_arrays *g );
                                 (st) *  (nc)               + \
                                 (c))
 
-#define V_IDX(p,s,a,c,ns,nc)  ((p)  * ((ns)*NANT*(nc)) + \
-                               (s)  * (NANT*(nc))      + \
+#define V_IDX(s,p,a,c,np,nc)  ((s)  * ((nc)*NANT*(np)) + \
+                               (p)  * ((nc)*NANT)      + \
                                (a)  * ((nc))           + \
                                (c))
 

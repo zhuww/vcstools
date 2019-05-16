@@ -95,11 +95,10 @@ int main(int argc, char **argv)
     // Create "shorthand" variables for options that are used frequently
     int nstation           = opts.nstation;
     int nchan              = opts.nchan;
-    const int npol         = 2;      // (X,Y)
-    const int outpol_coh   = 4;      // (I,Q,U,V)
-    const int outpol_incoh = 1;      // ("I")
-    int nchunk       = 10;     // How many chunks to split a second into
-
+    int npol         = 2;      // (X,Y)
+    int outpol_coh   = 4;      // (I,Q,U,V)
+    int outpol_incoh = 1;      // ("I")
+    
     float vgain = 1.0; // This is re-calculated every second for the VDIF output
     float ugain = 1.0; // This is re-calculated every second for the VDIF output
 
@@ -119,13 +118,16 @@ int main(int argc, char **argv)
     }
 
     // Parse input pointings
-    int max_npointing = 6; // This is dependant on the number of threads - 2 
+    int max_npointing = 12; // This is dependant on the number of threads - 2 
     char RAs[max_npointing][64];
     char DECs[max_npointing][64];
     int npointing = sscanf( opts.pointings, 
-            "%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,]" , 
+            "%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,]" , 
                             RAs[0], DECs[0], RAs[1], DECs[1], RAs[2], DECs[2],
-                            RAs[3], DECs[3], RAs[4], DECs[4], RAs[5], DECs[5] );
+                            RAs[3], DECs[3], RAs[4], DECs[4], RAs[5], DECs[5],
+                            RAs[6], DECs[6], RAs[7], DECs[7], RAs[8], DECs[8],
+                            RAs[9], DECs[9], RAs[10], DECs[10], RAs[11], DECs[11] );
+
     if (npointing%2 == 1)
     {
         fprintf(stderr, "Number of RAs do not equal the number of Decs given. Exiting\n");
@@ -142,17 +144,29 @@ int main(int argc, char **argv)
     {
        strcpy( pointing_array[p][0], RAs[p] );
        strcpy( pointing_array[p][1], DECs[p] );
-       fprintf(stderr, " Pointing Num: %i  RA: %s  Dec: %s\n", p, pointing_array[p][0], pointing_array[p][1]);
+       fprintf(stderr, "[%f]  Pointing Num: %i  RA: %s  Dec: %s\n", 
+                        NOW-begintime, p, pointing_array[p][0], 
+                                          pointing_array[p][1]);
     }
 
+    // How many chunks to split a second into so there is enough memory on the gpu
+    int nchunk = 3 * npointing; 
+    while ( opts.sample_rate%nchunk == 0 ) nchunk++;
+        
+        
     // Allocate memory
     char **filenames = create_filenames( &opts );
-    ComplexDouble ****complex_weights_array = create_complex_weights( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol]
-    ComplexDouble *****invJi = create_invJi( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol][npol]
-    ComplexDouble ****detected_beam = create_detected_beam( npointing, 3*opts.sample_rate, nchan, npol ); // [npointing][3*opts.sample_rate][nchan][npol]
+    ComplexDouble ****complex_weights_array = create_complex_weights( npointing,
+                  nstation, nchan, npol ); // [npointing][nstation][nchan][npol]
+    ComplexDouble *****invJi = create_invJi( npointing, nstation, nchan, 
+                  npol ); // [npointing][nstation][nchan][npol][npol]
+    ComplexDouble ****detected_beam = create_detected_beam( npointing, 
+                  3*opts.sample_rate, nchan, npol ); 
+                  // [npointing][3*opts.sample_rate][nchan][npol]
 
     // Read in info from metafits file
-    fprintf( stderr, "[%f]  Reading in metafits file information from %s\n", NOW-begintime, opts.metafits);
+    fprintf( stderr, "[%f]  Reading in metafits file information from %s\n", 
+                      NOW-begintime, opts.metafits);
     struct metafits_info mi;
     get_metafits_info( opts.metafits, &mi, opts.chan_width );
 
@@ -241,7 +255,6 @@ int main(int argc, char **argv)
     
     // Create array for holding the raw data
     int bytes_per_file = opts.sample_rate * nstation * npol * nchan;
-    fprintf( stderr, "data size: %d\n", bytes_per_file * sizeof(uint8_t));
     uint8_t *data;
     uint8_t *data1 = (uint8_t *)malloc( bytes_per_file * sizeof(uint8_t) );
     assert(data1);
@@ -252,6 +265,7 @@ int main(int argc, char **argv)
     float *data_buffer_coh    = NULL;
     float *data_buffer_coh1   = NULL;
     float *data_buffer_coh2   = NULL; 
+    //float *reorder_buffer_coh = NULL;
     float *data_buffer_incoh  = NULL;
     float *data_buffer_incoh1 = NULL;
     float *data_buffer_incoh2 = NULL;
@@ -266,6 +280,9 @@ int main(int argc, char **argv)
                                                      outpol_coh * pf[0].hdr.nsblk );
     data_buffer_coh2   = create_data_buffer_psrfits( npointing * nchan * 
                                                      outpol_coh * pf[0].hdr.nsblk );
+    //reorder_buffer_coh = create_data_buffer_psrfits( npointing * nchan * 
+    //                                                 outpol_coh * pf[0].hdr.nsblk );
+
     data_buffer_incoh1 = create_data_buffer_psrfits( nchan * outpol_incoh * pf_incoh[0].hdr.nsblk );
     data_buffer_incoh2 = create_data_buffer_psrfits( nchan * outpol_incoh * pf_incoh[0].hdr.nsblk );
     data_buffer_vdif1  = create_data_buffer_vdif( &vf[0], npointing );
@@ -279,8 +296,8 @@ int main(int argc, char **argv)
     struct gpu_ipfb_arrays* gi;
     gi = (struct gpu_ipfb_arrays *) malloc(sizeof(struct gpu_ipfb_arrays));
     #ifdef HAVE_CUDA
-    malloc_formbeam( &gf, opts.sample_rate, nstation, nchan, npol,
-                     outpol_coh, outpol_incoh, npointing, nchunk );
+    malloc_formbeam( &gf, opts.sample_rate, nstation, nchan, npol, outpol_coh, 
+                     outpol_incoh, npointing, nchunk, NOW-begintime );
 
     if (opts.out_uvdif)
     {
@@ -519,6 +536,18 @@ int main(int argc, char **argv)
                 }
                 
                 clock_t start = clock();
+                /*
+                fprintf( stderr, "[%f] [%d/%d] Reording data before writing to file(s)\n",
+                                  NOW-begintime, file_no+1, nfiles );
+                if (opts.out_coh)
+                    psrfits_reorder(data_buffer_coh, reorder_buffer_coh, nchan,
+                                    outpol_coh, npointing, opts.sample_rate);
+                if (opts.out_incoh)
+                    psrfits_reorder(data_buffer_incoh, reorder_buffer_incoh,
+                                    nchan, outpol_inccoh, npointing,
+                                    opts.sample_rate);
+                //TODO add vdif reordering once you've made it multipixel
+                */
 
                 for ( p = 0; p < npointing; p++)
                 {
@@ -527,9 +556,11 @@ int main(int argc, char **argv)
                             NOW-begintime, file_no+1, nfiles, p+1, npointing );
 
                     if (opts.out_coh)
-                        psrfits_write_second( &pf[p], data_buffer_coh, nchan, outpol_coh, p );
+                        psrfits_write_second( &pf[p], data_buffer_coh, 
+                                              nchan, outpol_coh, p );
                     if (opts.out_incoh && p == 0)
-                        psrfits_write_second( &pf_incoh[p], data_buffer_incoh, nchan, outpol_incoh, p );
+                        psrfits_write_second( &pf_incoh[p], data_buffer_incoh, 
+                                              nchan, outpol_incoh, p );
                     if (opts.out_vdif)
                         vdif_write_second( &vf[p], &vhdr, data_buffer_vdif, &vgain, p );
                     if (opts.out_uvdif)
