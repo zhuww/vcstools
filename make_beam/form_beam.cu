@@ -53,11 +53,7 @@ __global__ void beamform_kernel( uint8_t *data,
                                  ComplexDouble *Nxx,
                                  ComplexDouble *Nxy,
                                  ComplexDouble *Nyy,
-                                 double *Ia,
-                                 ComplexDouble *Bd,
-                                 float *C,
-                                 float *I,
-                                 double invw)
+                                 double *Ia)
 /* Layout for input arrays:
  *   data [nsamples] [nchan] [NPFB] [NREC] [NINC] -- see docs
  *   W    [NSTATION] [nchan] [NPOL]               -- weights array
@@ -66,12 +62,10 @@ __global__ void beamform_kernel( uint8_t *data,
 {
     // Translate GPU block/thread numbers into meaningful names
     int s   = threadIdx.x;  /* The (s)ample number */
-    int ns  = blockDim.x;   /* The (n)umber of (s)amples */
     int c   = threadIdx.y;  /* The (c)hannel number */
     int nc  = blockDim.y;   /* The (n)umber of (c)hannels (=128) */
     
     int ant = blockIdx.x;   /* The (ant)enna number */
-    int nant= gridDim.x;    /* The (n)umber of (ant)enna */
     int p   = blockIdx.y;   /* The (p)ointing number */
     int np  = gridDim.y;    /* The (n)umber of (p)ointings */
 
@@ -82,14 +76,14 @@ __global__ void beamform_kernel( uint8_t *data,
     /* Fix from Maceij regarding NaNs in output when running on Athena, 13 April 2018.
        Apparently the different compilers and architectures are treating what were 
        unintialised variables very differently */
+    Bx[V_IDX(s,p,ant,c,np,nc)]  = CMaked( 0.0, 0.0 );
+    By[V_IDX(s,p,ant,c,np,nc)]  = CMaked( 0.0, 0.0 );
+
     Dx  = CMaked( 0.0, 0.0 );
     Dy  = CMaked( 0.0, 0.0 );
 
     WDx = CMaked( 0.0, 0.0 );
     WDy = CMaked( 0.0, 0.0 );
-    
-    Bx[V_IDX(s,p,ant,c,np,nc)]  = CMaked( 0.0, 0.0 );
-    By[V_IDX(s,p,ant,c,np,nc)]  = CMaked( 0.0, 0.0 );
 
     Nxx[V_IDX(s,p,ant,c,np,nc)] = CMaked( 0.0, 0.0 );
     Nxy[V_IDX(s,p,ant,c,np,nc)] = CMaked( 0.0, 0.0 );
@@ -119,51 +113,92 @@ __global__ void beamform_kernel( uint8_t *data,
     Nyy[V_IDX(s,p,ant,c,np,nc)] = CMuld( By[V_IDX(s,p,ant,c,np,nc)],
                                          CConjd(By[V_IDX(s,p,ant,c,np,nc)]) );
 
+}
+
+
+__global__ void ant_sum(double *Ia,
+                        ComplexDouble *Bx, 
+                        ComplexDouble *By, 
+                        ComplexDouble *Nxx, 
+                        ComplexDouble *Nxy, 
+                        ComplexDouble *Nyy)
+{    
+    // Translate GPU block/thread numbers into meaningful names
+    int s    = threadIdx.x; /* The (s)ample number */
+    int c    = threadIdx.y; /* The (c)hannel number */
+    int nc   = blockDim.y;  /* The (n)umber of (c)hannels (=128) */
+
+    int ant  = blockIdx.x;  /* The (ant)enna number */
+    int nant = gridDim.x;   /* The (n)umber of (p)ointings */
+    int p    = blockIdx.y;  /* The (p)ointing number */
+    int np   = gridDim.y;   /* The (n)umber of (p)ointings */
+    
     // Detect the coherent beam
     // A summation over an array is faster on a GPU if you add half on array 
     // to its other half as than can be done in parallel. Then this is repeated
     // with half of the previous array until the array is down to 1.
-    for (int sant = nant / 2; sant < 1; sant = sant / 2)
-    {
-        if ( ant < sant )
-        {
-            if (p == 0) Ia[V_IDX(s,p,ant,c,np,nc)] += Ia[V_IDX(s,p,ant+sant,c,np,nc)];
-            Bx[V_IDX(s,p,ant,c,np,nc)]  = CAddd( Bx[V_IDX(s,p,ant,     c,np,nc)], 
-                                                 Bx[V_IDX(s,p,ant+sant,c,np,nc)] );
-            By[V_IDX(s,p,ant,c,np,nc)]  = CAddd( By[V_IDX(s,p,ant,     c,np,nc)], 
-                                                 By[V_IDX(s,p,ant+sant,c,np,nc)] );
-            Nxx[V_IDX(s,p,ant,c,np,nc)] = CAddd( Nxx[V_IDX(s,p,ant,     c,np,nc)], 
-                                                 Nxx[V_IDX(s,p,ant+sant,c,np,nc)] );
-            Nxy[V_IDX(s,p,ant,c,np,nc)] = CAddd( Nxy[V_IDX(s,p,ant,     c,np,nc)], 
-                                                 Nxy[V_IDX(s,p,ant+sant,c,np,nc)] );
-            Nyy[V_IDX(s,p,ant,c,np,nc)] = CAddd( Nyy[V_IDX(s,p,ant,     c,np,nc)], 
-                                                 Nyy[V_IDX(s,p,ant+sant,c,np,nc)] );
-        }
-    }
-    
-    if ( ant == 0 )
-    { 
-        // Form the stokes parameters for the coherent beam
-        // Only doing it for ant 0 so that it only prints once
-        float bnXX = DETECT(Bx[V_IDX(s,p,ant,c,np,nc)]) - CReald(Nxx[V_IDX(s,p,ant,c,np,nc)]);
-        float bnYY = DETECT(By[V_IDX(s,p,ant,c,np,nc)]) - CReald(Nyy[V_IDX(s,p,ant,c,np,nc)]);
-        ComplexDouble bnXY = CSubd( CMuld( Bx[V_IDX(s,p,ant,c,np,nc)], 
-                                           CConjd( By[V_IDX(s,p,ant,c,np,nc)] ) ),
-                                    Nxy[V_IDX(s,p,ant,c,np,nc)] );
 
-        // The incoherent beam
-        if ( p == 0 ) I[I_IDX(s,c,nc)] = Ia[V_IDX(s,p,ant,c,np,nc)];
+    if (p == 0) Ia[V_IDX(s,p,ant,c,np,nc)] += Ia[V_IDX(s,p,ant+nant,c,np,nc)];
+    Bx[V_IDX(s,p,ant,c,np,nc)]  = CAddd( Bx[V_IDX(s,p,ant,     c,np,nc)], 
+                                         Bx[V_IDX(s,p,ant+nant,c,np,nc)] );
+    By[V_IDX(s,p,ant,c,np,nc)]  = CAddd( By[V_IDX(s,p,ant,     c,np,nc)], 
+                                         By[V_IDX(s,p,ant+nant,c,np,nc)] );
+    Nxx[V_IDX(s,p,ant,c,np,nc)] = CAddd( Nxx[V_IDX(s,p,ant,     c,np,nc)], 
+                                         Nxx[V_IDX(s,p,ant+nant,c,np,nc)] );
+    Nxy[V_IDX(s,p,ant,c,np,nc)] = CAddd( Nxy[V_IDX(s,p,ant,     c,np,nc)], 
+                                         Nxy[V_IDX(s,p,ant+nant,c,np,nc)] );
+    Nyy[V_IDX(s,p,ant,c,np,nc)] = CAddd( Nyy[V_IDX(s,p,ant,     c,np,nc)], 
+                                         Nyy[V_IDX(s,p,ant+nant,c,np,nc)] );
+} 
 
-        // Stokes I, Q, U, V:
-        C[C_IDX(p,s,0,c,ns,nc)] = invw*(bnXX + bnYY);
-        C[C_IDX(p,s,1,c,ns,nc)] = invw*(bnXX - bnYY);
-        C[C_IDX(p,s,2,c,ns,nc)] =  2.0*invw*CReald( bnXY );
-        C[C_IDX(p,s,3,c,ns,nc)] = -2.0*invw*CImagd( bnXY );
+__global__ void form_stokes(ComplexDouble *Bd,
+                            float *C,
+                            float *I,
+                            ComplexDouble *Bx, 
+                            ComplexDouble *By, 
+                            ComplexDouble *Nxx, 
+                            ComplexDouble *Nxy, 
+                            ComplexDouble *Nyy, 
+                            double *Ia,
+                            double invw)
+/* Layout for output arrays:
+ *   Bd   [nsamples] [nchan]   [NPOL]             -- detected beam
+ *   C    [nsamples] [NSTOKES] [nchan]            -- coherent full stokes
+ *   I    [nsamples] [nchan]                      -- incoherent
+ */
 
-        // The beamformed products
-        Bd[B_IDX(p,s,c,0,ns,nc)] = Bx[V_IDX(s,p,ant,c,np,nc)];
-        Bd[B_IDX(p,s,c,1,ns,nc)] = By[V_IDX(s,p,ant,c,np,nc)];
-    }
+{    
+    // Translate GPU block/thread numbers into meaningful names
+    int s   = threadIdx.x;  /* The (s)ample number */
+    int ns  = blockDim.x;   /* The (n)umber of (s)amples */
+    int c   = threadIdx.y;  /* The (c)hannel number */
+    int nc  = blockDim.y;   /* The (n)umber of (c)hannels (=128) */
+
+    int ant = 0;            /* The (ant)enna number */
+    int p   = blockIdx.x;   /* The (p)ointing number */
+    int np  = gridDim.x;    /* The (n)umber of (p)ointings */
+
+
+    // Form the stokes parameters for the coherent beam
+    // Only doing it for ant 0 so that it only prints once
+    float bnXX = DETECT(Bx[V_IDX(s,p,ant,c,np,nc)]) - CReald(Nxx[V_IDX(s,p,ant,c,np,nc)]);
+    float bnYY = DETECT(By[V_IDX(s,p,ant,c,np,nc)]) - CReald(Nyy[V_IDX(s,p,ant,c,np,nc)]);
+    ComplexDouble bnXY = CSubd( CMuld( Bx[V_IDX(s,p,ant,c,np,nc)], 
+                                       CConjd( By[V_IDX(s,p,ant,c,np,nc)] ) ),
+                                Nxy[V_IDX(s,p,ant,c,np,nc)] );
+
+    // The incoherent beam
+    I[I_IDX(s,c,nc)] = Ia[V_IDX(0,s,ant,c,np,nc)];
+
+    // Stokes I, Q, U, V:
+    C[C_IDX(p,s,0,c,ns,nc)] = invw*(bnXX + bnYY);
+    C[C_IDX(p,s,1,c,ns,nc)] = invw*(bnXX - bnYY);
+    C[C_IDX(p,s,2,c,ns,nc)] =  2.0*invw*CReald( bnXY );
+    C[C_IDX(p,s,3,c,ns,nc)] = -2.0*invw*CImagd( bnXY );
+
+    // The beamformed products
+    Bd[B_IDX(p,s,c,0,ns,nc)] = Bx[V_IDX(s,p,ant,c,np,nc)];
+    Bd[B_IDX(p,s,c,1,ns,nc)] = By[V_IDX(s,p,ant,c,np,nc)];
 }
 
 __global__ void flatten_bandpass_I_kernel(float *I,
@@ -333,16 +368,32 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
         cudaDeviceSynchronize();
         beamform_kernel<<<stat_point, samples_chan>>>( g->d_data, 
                           g->d_W, g->d_J, g->d_Bx, g->d_By, 
-                          g->d_Nxx, g->d_Nxy, g->d_Nyy, g->d_incoh_volt,
-                          g->d_Bd, g->d_coh, g->d_incoh, invw);
+                          g->d_Nxx, g->d_Nxy, g->d_Nyy, g->d_incoh_volt);
         cudaDeviceSynchronize();
+        
+        // sum over antennas/tile
+        for (int nant = NSTATION / 2; nant < 1; nant = nant / 2)
+        {
+            dim3 stat_point(nant, npointing);
+            ant_sum<<<stat_point, samples_chan>>>( g->d_incoh_volt, 
+                                                   g->d_Bx, g->d_By, 
+                                                   g->d_Nxx, g->d_Nxy, g->d_Nyy );
+            cudaDeviceSynchronize();
+        }
+
+        //form stokes
+        form_stokes<<<npointing, samples_chan>>>( g->d_Bd, g->d_coh, g->d_incoh, 
+                                                  g->d_Bx, g->d_By,
+                                                  g->d_Nxx, g->d_Nxy, g->d_Nyy,
+                                                  g->d_incoh_volt, invw);
         // 1 block per pointing direction, hence the 1 for now
         // TODO check if these actually work, can't see them return values.
         // The incoh kernal also takes 40 second for some reason so commenting out
         //flatten_bandpass_I_kernel<<<1, nchan>>>(g->d_incoh, opts->sample_rate);
+        cudaDeviceSynchronize();
 
         // now do the same for the coherent beam
-        //dim3 chan_stokes(nchan, outpol_coh);
+        dim3 chan_stokes(nchan, outpol_coh);
         //flatten_bandpass_C_kernel<<<npointing, chan_stokes>>>(g->d_coh, opts->sample_rate);
         //cudaDeviceSynchronize(); // Memcpy acts as a synchronize step so don't sync here
     }

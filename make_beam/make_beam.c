@@ -151,9 +151,7 @@ int main(int argc, char **argv)
 
     // How many chunks to split a second into so there is enough memory on the gpu
     int nchunk = 3 * npointing; 
-    while ( opts.sample_rate%nchunk != 0 ) nchunk++;
-    fprintf(stderr, "[%f]  opts.sample_rate %d  nchunk %d  \% %d\n",
-                     NOW-begintime, opts.sample_rate, nchunk, opts.sample_rate%nchunk);
+    while ( opts.sample_rate%nchunk == 0 ) nchunk++;
         
         
     // Allocate memory
