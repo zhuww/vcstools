@@ -76,14 +76,14 @@ __global__ void beamform_kernel( uint8_t *data,
     /* Fix from Maceij regarding NaNs in output when running on Athena, 13 April 2018.
        Apparently the different compilers and architectures are treating what were 
        unintialised variables very differently */
-    Bx[V_IDX(s,p,ant,c,np,nc)]  = CMaked( 0.0, 0.0 );
-    By[V_IDX(s,p,ant,c,np,nc)]  = CMaked( 0.0, 0.0 );
-
     Dx  = CMaked( 0.0, 0.0 );
     Dy  = CMaked( 0.0, 0.0 );
 
     WDx = CMaked( 0.0, 0.0 );
     WDy = CMaked( 0.0, 0.0 );
+    
+    Bx[V_IDX(s,p,ant,c,np,nc)]  = CMaked( 0.0, 0.0 );
+    By[V_IDX(s,p,ant,c,np,nc)]  = CMaked( 0.0, 0.0 );
 
     Nxx[V_IDX(s,p,ant,c,np,nc)] = CMaked( 0.0, 0.0 );
     Nxy[V_IDX(s,p,ant,c,np,nc)] = CMaked( 0.0, 0.0 );
