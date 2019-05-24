@@ -136,7 +136,6 @@ __global__ void ant_sum(double *Ia,
     int ant  = blockIdx.y;  /* The (ant)enna number */
     int nant = gridDim.y;   /* The (n)umber of (p)ointings */
     int p    = blockIdx.z;  /* The (p)ointing number */
-    int np   = gridDim.z;   /* The (n)umber of (p)ointings */
     
     // A summation over an array is faster on a GPU if you add half on array 
     // to its other half as than can be done in parallel. Then this is repeated
@@ -178,11 +177,11 @@ __global__ void form_stokes(ComplexDouble *Bd,
     int ns  = blockDim.x;   /* The (n)umber of (s)amples */
 
     int ant = 0;            /* The (ant)enna number */
-    int p   = blockIdx.x;   /* The (p)ointing number */
-    int np  = gridDim.x;    /* The (n)umber of (p)ointings */
-    int c   = blockIdx.y;   /* The (c)hannel number */
-    int nc  = gridDim.y;    /* The (n)umber of (c)hannels (=128) */
-
+    int c   = blockIdx.x;   /* The (c)hannel number */
+    int nc  = gridDim.x;    /* The (n)umber of (c)hannels (=128) */
+    int p   = blockIdx.y;   /* The (p)ointing number */
+    int np  = gridDim.y;    /* The (n)umber of (p)ointings */
+    
     
     // Clear output mem
     C[C_IDX(p,s,0,c,ns,nc)] = 0.0;
@@ -400,8 +399,8 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
         }
 
         //form stokes
-        dim3 point_chan(npointing, nchan);
-        form_stokes<<<point_chan, samples>>>( g->d_Bd, g->d_coh, g->d_incoh, 
+        dim3 chan_point(nchan, npointing);
+        form_stokes<<<chan_point, samples>>>( g->d_Bd, g->d_coh, g->d_incoh, 
                                                   g->d_Bx, g->d_By,
                                                   g->d_Nxx, g->d_Nxy, g->d_Nyy,
                                                   g->d_incoh_volt, invw);
