@@ -269,7 +269,7 @@ int main(int argc, char **argv)
             &opts.cal,              // struct holding info about calibration
             opts.sample_rate,       // = 10000 samples per sec
             opts.time_utc,          // utc time string
-            nfiles,                 // number of seconds to calculate delays for
+            (float)nfiles,          // number of seconds to calculate delays for
             delay_vals,             // Populate psrfits header info
             &mi,                    // Struct containing info from metafits file
             complex_weights_array,  // complex weights array (output will be put here)
