@@ -186,9 +186,9 @@ int main(int argc, char **argv)
 
     // Allocate memory
     char **filenames = create_filenames( &opts );
-    ComplexDouble ****complex_weights_array = create_complex_weights( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol]
-    ComplexDouble *****invJi = create_invJi( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol][npol]
-    ComplexDouble ****detected_beam = create_detected_beam( npointing, 3*opts.sample_rate, nchan, npol ); // [npointing][3*opts.sample_rate][nchan][npol]
+    ComplexDouble  *****complex_weights_array = create_complex_weights( nfiles, npointing, nstation, nchan, npol );
+    ComplexDouble ******invJi                 = create_invJi( nfiles, npointing, nstation, nchan, npol );
+    ComplexDouble   ****detected_beam         = create_detected_beam( npointing, 3*opts.sample_rate, nchan, npol );
 
     // Read in info from metafits file
     fprintf( stderr, "[%f]  Reading in metafits file information from %s\n", NOW-begintime, opts.metafits);
@@ -259,20 +259,21 @@ int main(int argc, char **argv)
     double invw = 1.0/wgt_sum;
 
     // Run get_delays to populate the delay_vals struct
-    fprintf( stderr, "[%f]  Setting up output header information\n", NOW-begintime);
+    fprintf( stderr, "[%f]  Calculating delays for %d seconds\n", NOW-begintime,
+                                                                  nfiles );
     struct delays delay_vals[npointing];
     get_delays(
-            pointing_array,     // an array of pointings [pointing][ra/dec][characters]
-            npointing,          // number of pointings
-            opts.frequency,     // middle of the first frequency channel in Hz
-            &opts.cal,          // struct holding info about calibration
-            opts.sample_rate,   // = 10000 samples per sec
-            opts.time_utc,      // utc time string
-            0.0,                // seconds offset from time_utc at which to calculate delays
-            delay_vals,        // Populate psrfits header info
-            &mi,                // Struct containing info from metafits file
-            NULL,               // complex weights array (ignore this time)
-            NULL                // invJi array           (ignore this time)
+            pointing_array,         // an array of pointings [pointing][ra/dec][characters]
+            npointing,              // number of pointings
+            opts.frequency,         // middle of the first frequency channel in Hz
+            &opts.cal,              // struct holding info about calibration
+            opts.sample_rate,       // = 10000 samples per sec
+            opts.time_utc,          // utc time string
+            nfiles,                 // number of seconds to calculate delays for
+            delay_vals,             // Populate psrfits header info
+            &mi,                    // Struct containing info from metafits file
+            complex_weights_array,  // complex weights array (output will be put here)
+            invJi                   // invJi array           (output will be put here)
     );
 
     // Create structures for holding header information
@@ -494,23 +495,7 @@ int main(int argc, char **argv)
                     if (exit_check == 1) break; 
                 }
                 clock_t start = clock();
-                // Get the next second's worth of phases / jones matrices, if needed
-                fprintf( stderr, "[%f] [%d/%d] Calculating delays\n", NOW-begintime,
-                                        file_no+1, nfiles );
-                get_delays(
-                        pointing_array,     // an array of pointings [pointing][ra/dec][characters]
-                        npointing,          // number of pointings
-                        opts.frequency,         // middle of the first frequency channel in Hz
-                        &opts.cal,              // struct holding info about calibration
-                        opts.sample_rate,       // = 10000 samples per sec
-                        opts.time_utc,          // utc time string
-                        (double)file_no,        // seconds offset from time_utc at which to calculate delays
-                        NULL,                   // Don't update delay_vals
-                        &mi,                    // Struct containing info from metafits file
-                        complex_weights_array,  // complex weights array (answer will be output here)
-                        invJi );                // invJi array           (answer will be output here)
-
-
+                                
                 /*for (i = 0; i < npointing * nchan * outpol_coh * opts.sample_rate; i++)
                     data_buffer_coh[i] = 0.0;
 
@@ -519,7 +504,7 @@ int main(int argc, char **argv)
                 fprintf( stderr, "[%f] [%d/%d] Calculating beam\n", NOW-begintime,
                                         file_no+1, nfiles);
                 
-                cu_form_beam( data, &opts, complex_weights_array, invJi, file_no,
+                cu_form_beam( data, &opts, complex_weights_array[file_no], invJi[file_no], file_no,
                               npointing, nstation, nchan, npol, outpol_coh, invw, &gf,
                               detected_beam, data_buffer_coh, data_buffer_incoh,
                               streams );
@@ -607,8 +592,8 @@ int main(int argc, char **argv)
 
     // Free up memory
     destroy_filenames( filenames, &opts );
-    destroy_complex_weights( complex_weights_array, npointing, nstation, nchan );
-    destroy_invJi( invJi, npointing, nstation, nchan, npol );
+    destroy_complex_weights( complex_weights_array, nfiles, npointing, nstation, nchan );
+    destroy_invJi( invJi, npointing, nfiles, nstation, nchan, npol );
     destroy_detected_beam( detected_beam, npointing, 3*opts.sample_rate, nchan );
     
     destroy_metafits_info( &mi );
@@ -1001,69 +986,82 @@ void destroy_filenames( char **filenames, struct make_beam_opts *opts )
 }
 
 
-ComplexDouble ****create_complex_weights( int npointing, int nstation, int nchan, int npol )
+ComplexDouble *****create_complex_weights( int nfiles, int npointing, int nstation, int nchan, int npol )
 // Allocate memory for complex weights matrices
 {
-    int p, ant, ch; // Loop variables
-    ComplexDouble ****array;
+    int f, p, ant, ch; // Loop variables
+    ComplexDouble *****array;
     
-    array = (ComplexDouble ****)malloc( npointing * sizeof(ComplexDouble ***) );
-    
-    for (p = 0; p < npointing; p++)
+    array = (ComplexDouble *****)malloc( nfiles * sizeof(ComplexDouble ****) );
+
+    for (f = 0; f < nfiles; f++)
     {
-        array[p] = (ComplexDouble ***)malloc( nstation * sizeof(ComplexDouble **) );
-
-        for (ant = 0; ant < nstation; ant++)
+        array[f] = (ComplexDouble ****)malloc( npointing * sizeof(ComplexDouble ***) );
+        
+        for (p = 0; p < npointing; p++)
         {
-            array[p][ant] = (ComplexDouble **)malloc( nchan * sizeof(ComplexDouble *) );
+            array[f][p] = (ComplexDouble ***)malloc( nstation * sizeof(ComplexDouble **) );
 
-            for (ch = 0; ch < nchan; ch++)
-                array[p][ant][ch] = (ComplexDouble *)malloc( npol * sizeof(ComplexDouble) );
+            for (ant = 0; ant < nstation; ant++)
+            {
+                array[f][p][ant] = (ComplexDouble **)malloc( nchan * sizeof(ComplexDouble *) );
+
+                for (ch = 0; ch < nchan; ch++)
+                    array[f][p][ant][ch] = (ComplexDouble *)malloc( npol * sizeof(ComplexDouble) );
+            }
         }
     }
     return array;
 }
 
 
-void destroy_complex_weights( ComplexDouble ****array, int npointing, int nstation, int nchan )
+void destroy_complex_weights( ComplexDouble *****array, int nfiles, int npointing, int nstation, int nchan )
 {
-    int p, ant, ch;
-    for (p = 0; p < npointing; p++)
+    int f, p, ant, ch;
+    for (f = 0; f < nfiles; f++)
     {
-        for (ant = 0; ant < nstation; ant++)
+        for (p = 0; p < npointing; p++)
         {
-            for (ch = 0; ch < nchan; ch++)
-                free( array[p][ant][ch] );
+            for (ant = 0; ant < nstation; ant++)
+            {
+                for (ch = 0; ch < nchan; ch++)
+                    free( array[f][p][ant][ch] );
 
-            free( array[p][ant] );
+                free( array[f][p][ant] );
+            }
+            free( array[f][p] );
         }
-        free( array[p] );
+        free( array[f] );
     }
     free( array );
 }
 
 
-ComplexDouble *****create_invJi( int npointing, int nstation, int nchan, int npol )
+ComplexDouble ******create_invJi( int nfiles, int npointing, int nstation, int nchan, int npol )
 // Allocate memory for (inverse) Jones matrices
 {
-    int p, ant, pol, ch; // Loop variables
-    ComplexDouble *****invJi;
+    int f, p, ant, pol, ch; // Loop variables
+    ComplexDouble ******invJi;
     
-    invJi = (ComplexDouble *****)malloc( npointing * sizeof(ComplexDouble ****) );
-    for (p = 0; p < npointing; p++)
+    invJi = (ComplexDouble ******)malloc( nfiles * sizeof(ComplexDouble *****) );
+    for (f = 0; f < nfiles; f++)
     {
-        invJi[p] = (ComplexDouble ****)malloc( nstation * sizeof(ComplexDouble ***) );
-
-        for (ant = 0; ant < nstation; ant++)
+        invJi[f] = (ComplexDouble *****)malloc( npointing * sizeof(ComplexDouble ****) );
+        for (p = 0; p < npointing; p++)
         {
-            invJi[p][ant] =(ComplexDouble ***)malloc( nchan * sizeof(ComplexDouble **) );
+            invJi[f][p] = (ComplexDouble ****)malloc( nstation * sizeof(ComplexDouble ***) );
 
-            for (ch = 0; ch < nchan; ch++)
+            for (ant = 0; ant < nstation; ant++)
             {
-                invJi[p][ant][ch] = (ComplexDouble **)malloc( npol * sizeof(ComplexDouble *) );
+                invJi[f][p][ant] =(ComplexDouble ***)malloc( nchan * sizeof(ComplexDouble **) );
 
-                for (pol = 0; pol < npol; pol++)
-                    invJi[p][ant][ch][pol] = (ComplexDouble *)malloc( npol * sizeof(ComplexDouble) );
+                for (ch = 0; ch < nchan; ch++)
+                {
+                    invJi[f][p][ant][ch] = (ComplexDouble **)malloc( npol * sizeof(ComplexDouble *) );
+
+                    for (pol = 0; pol < npol; pol++)
+                        invJi[f][p][ant][ch][pol] = (ComplexDouble *)malloc( npol * sizeof(ComplexDouble) );
+                }
             }
         }
     }
@@ -1071,24 +1069,28 @@ ComplexDouble *****create_invJi( int npointing, int nstation, int nchan, int npo
 }
 
 
-void destroy_invJi( ComplexDouble *****array, int npointing, int nstation, int nchan, int npol )
+void destroy_invJi( ComplexDouble ******array, int nfiles, int npointing, int nstation, int nchan, int npol )
 {
-    int p, ant, ch, pol;
-    for (p = 0; p < npointing; p++)
+    int f, p, ant, ch, pol;
+    for (f = 0; f < nfiles; f++)
     {
-        for (ant = 0; ant < nstation; ant++)
+        for (p = 0; p < npointing; p++)
         {
-            for (ch = 0; ch < nchan; ch++)
+            for (ant = 0; ant < nstation; ant++)
             {
-                for (pol = 0; pol < npol; pol++)
-                    free( array[p][ant][ch][pol] );
+                for (ch = 0; ch < nchan; ch++)
+                {
+                    for (pol = 0; pol < npol; pol++)
+                        free( array[f][p][ant][ch][pol] );
 
-                free( array[p][ant][ch] );
+                    free( array[f][p][ant][ch] );
+                }
+
+                free( array[f][p][ant] );
             }
-
-            free( array[p][ant] );
+            free( array[f][p] );
         }
-        free( array[p] );
+        free( array[f] );
     }
     free( array );
 }

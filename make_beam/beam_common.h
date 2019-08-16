@@ -99,11 +99,11 @@ void get_delays(
         struct                 calibration *cal,
         float                  samples_per_sec,
         char                  *time_utc,
-        double                 sec_offset,
+        double                 nsec,
         struct delays          delay_vals[],
         struct metafits_info  *mi,
-        ComplexDouble      ****complex_weights_array,  // output
-        ComplexDouble     *****invJi                   // output
+        ComplexDouble     *****complex_weights_array,  // output
+        ComplexDouble    ******invJi                   // output
 );
 
 
