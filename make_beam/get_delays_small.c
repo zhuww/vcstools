@@ -180,6 +180,11 @@ void get_delays(
         ComplexDouble      ******invJi                   
                       // output: invJi[nsec][npointing][ant][ch][pol][pol]
         ) {
+    // Set up timing for each section
+    double setup_total_time, compcalc_total_time, invJi_total_time;
+    double mjd_total_time, radec_total_time;
+    double jones_total_time, gaincalc_total_time;
+    clock_t start = clock();
     
     int row;     // For counting through nstation*npol rows in the metafits file
     int ant;     // Antenna number
@@ -294,17 +299,21 @@ void get_delays(
     /* get mjd */
     utc2mjd(time_utc, &intmjd, &fracmjd);
 
+    setup_total_time += ((double) (clock() - start));
+    
     /* get requested Az/El from command line */
-  
+    
     for ( int s = 0; s < nsec; s++ )
     {
+        start = clock();
         mjd = intmjd + fracmjd;
         mjd += (s + 0.5) / 86400.0;
         mjd2lst(mjd, &lmst);
+        mjd_total_time += ((double) (clock() - start));
 
         for ( int p = 0; p < npointing; p++ )
         {
-
+            start = clock();
             dec_degs = parse_dec( pointing_array[p][1] );
             ra_hours = parse_ra( pointing_array[p][0] );  
 
@@ -331,10 +340,12 @@ void get_delays(
             unit_N = cos(el) * cos(az);
             unit_E = cos(el) * sin(az);
             unit_H = sin(el);
+            radec_total_time += ((double) (clock() - start));
+
             // Everything from this point on is frequency-dependent
             for (ch = 0; ch < NCHAN; ch++)
             {
-
+                start = clock();
                 // Calculating direction-dependent matrices
                 freq_ch = frequency + ch*mi->chan_width;    // The frequency of this fine channel
                 cal_chan = 0;
@@ -358,9 +369,10 @@ void get_delays(
                         az,                                   // azimuth & zenith angle to sample
                         (DPIBY2-el));
                 /* for the tile <not the look direction> */
+                jones_total_time += ((double) (((double) (clock() - start))));
 
                 for (row=0; row < (int)(mi->ninput); row++) {
-
+                    start = clock();
                     // Get the antenna and polarisation number from the row
                     ant = row / NPOL;
                     pol = row % NPOL;
@@ -381,8 +393,10 @@ void get_delays(
                         Ji[2] = CMaked( 0.0, 0.0 );
                         Ji[3] = CMaked( 0.0, 0.0 );
                     }
+                    gaincalc_total_time += ((double) (((double) (clock() - start))));
 
                     // Calculate the complex weights array
+                    start = clock();
                     if (mi->weights_array[row] != 0.0) {
 
                         cable = mi->cable_array[row] - mi->cable_array[refinp];
@@ -422,7 +436,9 @@ void get_delays(
                     else {
                         complex_weights_array[s][p][ant][ch][pol] = CMaked( mi->weights_array[row], 0.0 ); // i.e. = 0.0
                     }
+                    compcalc_total_time += ((double) (clock() - start));
 
+                    start = clock();
                     // Now, calculate the inverse Jones matrix
                     if (pol == 0) {
                         conj2x2( Ji, Ji ); // The RTS conjugates the sky so beware
@@ -436,6 +452,7 @@ void get_delays(
                                 invJi[s][p][ant][ch][p1][p2] = CMaked( 0.0, 0.0 );
                         }
                     }
+                    invJi_total_time += ((double) (clock() - start));
 
                 } // end loop through antenna/pol (row)
             } // end loop through fine channels (ch)
@@ -454,7 +471,30 @@ void get_delays(
         } //end loop through pointing
 
     } //end loop through sec
-        
+    
+    //setup_total_time, jones_total_time, gaincalc_total_time, compcalc_total_time, invJi_total_time;
+    fprintf( stderr, "Finished delay calc\n");
+    double setup_ms = setup_total_time  / CLOCKS_PER_SEC;
+    fprintf( stderr, "Total setup    time: %f s\n",
+                      setup_ms);
+    double jones_ms = jones_total_time / CLOCKS_PER_SEC;
+    fprintf( stderr, "Total jones    time: %f s\n",
+                      jones_ms);
+    double gaincalc_ms = gaincalc_total_time / CLOCKS_PER_SEC;
+    fprintf( stderr, "Total gaincalc time: %f s\n",
+                      gaincalc_ms);
+    double compcalc_ms = compcalc_total_time  / CLOCKS_PER_SEC;
+    fprintf( stderr, "Total compcalc time: %f s\n",
+                      compcalc_ms);
+    double invJi_ms = invJi_total_time  / CLOCKS_PER_SEC;
+    fprintf( stderr, "Total invJi    time: %f s\n",
+                      invJi_ms);
+    double mjd_ms = mjd_total_time  / CLOCKS_PER_SEC;
+    fprintf( stderr, "Total mjd      time: %f s\n",
+                      mjd_ms);
+    double radec_ms = radec_total_time  / CLOCKS_PER_SEC;
+    fprintf( stderr, "Total radec    time: %f s\n",
+                      radec_ms);
     // Free up dynamically allocated memory
 
     for (ant = 0; ant < NANT; ant++) {

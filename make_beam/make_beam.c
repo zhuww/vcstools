@@ -275,6 +275,7 @@ int main(int argc, char **argv)
             complex_weights_array,  // complex weights array (output will be put here)
             invJi                   // invJi array           (output will be put here)
     );
+    fprintf( stderr, "[%f]  Delay calculation finished\n", NOW-begintime);
 
     // Create structures for holding header information
     struct psrfits  *pf;
