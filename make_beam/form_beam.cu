@@ -201,8 +201,8 @@ __global__ void beamform_kernel( uint8_t *data,
     // Form the stokes parameters for the coherent beam
     if (ant == 0)
     {
-        float bnXX = DETECT(Bx[0]) - CReald(Nxx[0]);
-        float bnYY = DETECT(By[0]) - CReald(Nyy[0]);
+        float bnXX = DETECT(Bx[0]); //- CReald(Nxx[0]);
+        float bnYY = DETECT(By[0]); //- CReald(Nyy[0]);
         ComplexDouble bnXY = CSubd(
                                  CMuld( Bx[0], CConjd( By[0] ) ),
                                  Nxy[0] );
