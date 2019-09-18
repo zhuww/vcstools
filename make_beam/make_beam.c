@@ -480,6 +480,9 @@ void usage() {
     fprintf(stderr, "\n");
     fprintf(stderr, "OUTPUT OPTIONS\n");
     fprintf(stderr, "\n");
+    fprintf(stderr, "\t-A, --dada                 ");
+    fprintf(stderr, "Turn on coherent DADA beam output.                               ");
+    fprintf(stderr, "[default: OFF]\n");
     fprintf(stderr, "\t-i, --incoh                ");
     fprintf(stderr, "Turn on incoherent PSRFITS beam output.                          ");
     fprintf(stderr, "[default: OFF]\n");
