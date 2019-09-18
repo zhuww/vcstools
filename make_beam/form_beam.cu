@@ -206,7 +206,7 @@ __global__ void beamform_kernel( uint8_t *data,
         //ComplexDouble bnXY = CSubd(
         //                         CMuld( Bx[0], CConjd( By[0] ) ),
         //                         Nxy[0] );
-        ComplexDouble bnXY = CMuld( Bx[0], CConjd( By[0] ) )
+        ComplexDouble bnXY = CMuld( Bx[0], CConjd( By[0] ) );
 
 
         // The incoherent beam
@@ -454,3 +454,4 @@ void free_formbeam( struct gpu_formbeam_arrays *g )
     cudaFree( g->d_coh );
     cudaFree( g->d_incoh );
 }
+
