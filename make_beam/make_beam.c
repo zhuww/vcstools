@@ -25,6 +25,7 @@
 #include "beam_common.h"
 #include "beam_psrfits.h"
 #include "beam_vdif.h"
+#include "beam_dada.h"
 #include "make_beam.h"
 #include "vdifio.h"
 #include "filter.h"

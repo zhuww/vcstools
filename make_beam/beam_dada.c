@@ -39,16 +39,16 @@ void dada_write_header( FILE *df, dada_header *dhdr )
     nchars += fprintf( df, "METADATA_BEAMS %d\n",      dhdr->metadata_beams );
     nchars += fprintf( df, "APPLY_PATH_WEIGHTS %d\n",  dhdr->apply_path_weights );
     nchars += fprintf( df, "APPLY_PATH_DELAYS %d\n",   dhdr->apply_path_delays );
-    nchars += fprintf( df, "INT_TIME_MSEC %d\n",       dhdr->inttime_msec );
-    nchars += fprintf( df, "FSCRUNCH_FACTOR %d\n",     dhdr->fscrunch_factor )
+    nchars += fprintf( df, "INT_TIME_MSEC %d\n",       dhdr->int_time_msec );
+    nchars += fprintf( df, "FSCRUNCH_FACTOR %d\n",     dhdr->fscrunch_factor );
     nchars += fprintf( df, "TRANSFER_SIZE %d\n",       dhdr->transfer_size );
     nchars += fprintf( df, "PROJ_ID %s\n",             dhdr->proj_id );
-    nchars += fprintf( df, "EXPOSURE_SECS %d\n",       dhdr->exptime_sec );
+    nchars += fprintf( df, "EXPOSURE_SECS %d\n",       dhdr->exposure_secs );
     nchars += fprintf( df, "COARSE_CHANNEL %d\n",      dhdr->coarse_channel );
     nchars += fprintf( df, "CORR_COARSE_CHANNEL %d\n", dhdr->corr_coarse_channel );
     nchars += fprintf( df, "SECS_PER_SUBOBS %d\n",     dhdr->secs_per_subobs );
-    nchars += fprintf( df, "UNIXTIME %d\n",            dhdr->start_uxtime );
-    nchars += fprintf( df, "UNIXTIME_MSEC %d\n",       dhdr->uxtime_msec );
+    nchars += fprintf( df, "UNIXTIME %d\n",            dhdr->unixtime );
+    nchars += fprintf( df, "UNIXTIME_MSEC %d\n",       dhdr->unixtime_msec );
     nchars += fprintf( df, "FINE_CHAN_WIDTH_HZ %d\n",  dhdr->fine_chan_width_hz );
     nchars += fprintf( df, "NFINE_CHAN %d\n",          dhdr->nfine_chan );
     nchars += fprintf( df, "BANDWIDTH_HZ %d\n",        dhdr->bandwidth_hz );
@@ -62,7 +62,7 @@ void dada_write_header( FILE *df, dada_header *dhdr )
                                                        dhdr->mc_src_ip[1],
                                                        dhdr->mc_src_ip[2],
                                                        dhdr->mc_src_ip[3] );
-    nchars += fprintf( df, "FILE_SIZE %d\n",           dhdr->file_size );
+    nchars += fprintf( df, "FILE_SIZE %ld\n",          dhdr->file_size );
     nchars += fprintf( df, "FILE_NUMBER %d\n",         dhdr->file_number );
 
     // Check that header isn't too big
@@ -132,7 +132,7 @@ void populate_dada_header(
     dhdr->nfine_chan          = nchan;
     dhdr->bandwidth_hz        = nchan * chan_width;
     dhdr->sample_rate         = sample_rate;
-    for (i = 0; i < 4; i++)  dhdr->cm_ip[i] = 0;
+    for (i = 0; i < 4; i++)  dhdr->mc_ip[i] = 0;
     dhdr->mc_port             = 0;
     for (i = 0; i < 4; i++)  dhdr->mc_src_ip[i] = 0;
     dhdr->file_size           = dhdr->ntimesamples*dhdr->nfine_chan + dhdr->hdr_size;
@@ -164,8 +164,8 @@ void dada_write_data( FILE *df, ComplexDouble ***detected_beam, int file_no,
         {
             for (pol = 0; pol < npol; pol++)
             {
-                re_im[0] = CRealf( detected_beam[s][ch][pol] );
-                re_im[1] = CImagf( detected_beam[s][ch][pol] );
+                re_im[0] = (float)CReald( detected_beam[s][ch][pol] );
+                re_im[1] = (float)CImagd( detected_beam[s][ch][pol] );
                 fwrite( re_im, sizeof(float), 2, df );
             }
         }

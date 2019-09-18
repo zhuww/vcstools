@@ -48,7 +48,7 @@ typedef struct dada_header_t {
     int nfine_chan;
     int bandwidth_hz;
     int sample_rate;
-    int cm_ip[4];
+    int mc_ip[4];
     int mc_port;
     int mc_src_ip[4];
     size_t file_size;
