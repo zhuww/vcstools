@@ -58,7 +58,8 @@ void form_beam( uint8_t *data, struct make_beam_opts *opts, ComplexDouble ***W,
         // output are wanted.
         int coherent_requested = opts->out_coh    ||
                                  opts->out_vdif   ||
-                                 opts->out_uvdif;
+                                 opts->out_uvdif  ||
+                                 opts->out_dada;
 
         // Because detected_beam is large enough to contain 2 seconds' worth
         // of data, we need an index that keeps track of which "second" we're

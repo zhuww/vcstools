@@ -81,6 +81,7 @@ int main(int argc, char **argv)
     opts.out_coh       = 0;  // Default = PSRFITS (coherent)   output turned OFF
     opts.out_vdif      = 0;  // Default = VDIF                 output turned OFF
     opts.out_uvdif     = 0;  // Default = upsampled VDIF       output turned OFF
+    opts.out_dada      = 0;  // Default = DADA                 output turned OFF
 
     // Variables for calibration settings
     opts.cal.filename          = NULL;
@@ -214,6 +215,7 @@ int main(int argc, char **argv)
     struct psrfits  pf_incoh;
     vdif_header     vhdr;
     vdif_header     uvhdr;
+    dada_header     dhdr;
     struct vdifinfo vf;
     struct vdifinfo uvf;
 
@@ -254,6 +256,9 @@ int main(int argc, char **argv)
     sprintf( uvf.basefilename, "%s_%s_ch%03d_u",
              uvf.exp_name, uvf.scan_name, atoi(opts.rec_channel) );
 
+    populate_dada_header( &dhdr, opts.metafits, opts.obsid, opts.time_utc,
+            opts.sample_rate, nchan, opts.chan_width, opts.rec_channel );
+    
     // Create array for holding the raw data
     int bytes_per_file = opts.sample_rate * nstation * npol * nchan;
     uint8_t *data = (uint8_t *)malloc( bytes_per_file * sizeof(uint8_t) );
@@ -359,6 +364,8 @@ int main(int argc, char **argv)
             vdif_write_second( &vf, &vhdr, data_buffer_vdif, &vgain );
         if (opts.out_uvdif)
             vdif_write_second( &uvf, &uvhdr, data_buffer_uvdif, &ugain );
+        if (opts.out_dada)
+            dada_write_second( &dhdr, detected_beam, file_no, opts.sample_rate, nchan, npol );
 
     }
 
@@ -585,6 +592,7 @@ void make_beam_parse_cmdline(
                 {"incoh",           no_argument,       0, 'i'},
                 {"psrfits",         no_argument,       0, 'p'},
                 {"vdif",            no_argument,       0, 'v'},
+                {"dada",            no_argument,       0, 'A'},
                 {"utc-time",        required_argument, 0, 'z'},
                 {"dec",             required_argument, 0, 'D'},
                 {"ra",              required_argument, 0, 'R'},
@@ -607,7 +615,7 @@ void make_beam_parse_cmdline(
 
             int option_index = 0;
             c = getopt_long( argc, argv,
-                             "a:b:B:C:d:D:e:f:F:hiJ:m:n:o:O:pr:R:uvVw:W:z:",
+                             "a:Ab:B:C:d:D:e:f:F:hiJ:m:n:o:O:pr:R:uvVw:W:z:",
                              long_options, &option_index);
             if (c == -1)
                 break;
@@ -616,6 +624,9 @@ void make_beam_parse_cmdline(
 
                 case 'a':
                     opts->nstation = atoi(optarg);
+                    break;
+                case 'A':
+                    opts->out_dada = 1;
                     break;
                 case 'b':
                     opts->begin = atol(optarg);
