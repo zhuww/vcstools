@@ -77,7 +77,7 @@ __global__ void beamform_kernel( uint8_t *data,
 
 
     /* Fix from Maceij regarding NaNs in output when running on Athena, 13 April 2018.
-       Apparently the different compilers and architectures are treating what were 
+       Apparently the different compilers and architectures are treating what were
        unintialised variables very differently */
     Bx[ant]  = CMaked( 0.0, 0.0 );
     By[ant]  = CMaked( 0.0, 0.0 );
@@ -203,9 +203,11 @@ __global__ void beamform_kernel( uint8_t *data,
     {
         float bnXX = DETECT(Bx[0]); //- CReald(Nxx[0]);
         float bnYY = DETECT(By[0]); //- CReald(Nyy[0]);
-        ComplexDouble bnXY = CSubd(
-                                 CMuld( Bx[0], CConjd( By[0] ) ),
-                                 Nxy[0] );
+        //ComplexDouble bnXY = CSubd(
+        //                         CMuld( Bx[0], CConjd( By[0] ) ),
+        //                         Nxy[0] );
+        ComplexDouble bnXY = CMuld( Bx[0], CConjd( By[0] ) )
+
 
         // The incoherent beam
         I[I_IDX(s,c,nc)] = Ia[0];
