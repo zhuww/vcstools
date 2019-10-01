@@ -150,10 +150,10 @@ __global__ void beamform_kernel( uint8_t *data,
     WDx = CMuld( W[W_IDX(p,ant,c,0,nc)], Dx );
     WDy = CMuld( W[W_IDX(p,ant,c,1,nc)], Dy );
 
-    Bx[ant] = CAddd( CMuld( J[J_IDX(p,ant,c,0,0,nc)], WDx ),
-                               CMuld( J[J_IDX(p,ant,c,1,0,nc)], WDy ) );
-    By[ant] = CAddd( CMuld( J[J_IDX(p,ant,c,0,1,nc)], WDx ),
-                               CMuld( J[J_IDX(p,ant,c,1,1,nc)], WDy ) );
+    Bx[ant] = CAddd( CMuld( J[J_IDX(ant,c,0,0,nc)], WDx ),
+                     CMuld( J[J_IDX(ant,c,1,0,nc)], WDy ) );
+    By[ant] = CAddd( CMuld( J[J_IDX(ant,c,0,1,nc)], WDx ),
+                     CMuld( J[J_IDX(ant,c,1,1,nc)], WDy ) );
 
     Nxx[ant] = CMuld( Bx[ant], CConjd(Bx[ant]) );
     Nxy[ant] = CMuld( Bx[ant], CConjd(By[ant]) );
@@ -320,7 +320,7 @@ __global__ void flatten_bandpass_C_kernel(float *C, int nstep )
 
 void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
                    ComplexDouble ****complex_weights_array,
-                   ComplexDouble *****invJi, int file_no, 
+                   ComplexDouble ****invJi, int file_no, 
                    int npointing, int nstation, int nchan,
                    int npol, int outpol_coh, double invw,
                    struct gpu_formbeam_arrays *g,
@@ -372,8 +372,11 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
 
         for (pol2 = 0; pol2 < npol; pol2++)
         {
-            Ji = Wi*npol + pol2;
-            g->J[Ji] = invJi[p][ant][ch][pol][pol2];
+            Ji = ant * (npol*npol*nchan) +
+                 ch  * (npol*npol) +
+                 pol * (npol) + 
+                 pol2;
+            g->J[Ji] = invJi[ant][ch][pol][pol2];
         }
     }
     // Copy the data to the device
@@ -447,7 +450,7 @@ void malloc_formbeam( struct gpu_formbeam_arrays *g, unsigned int sample_rate,
     g->data_size  = sample_rate * nstation * nchan * npol * sizeof(uint8_t);
     g->Bd_size    = npointing * sample_rate * nchan * npol * sizeof(ComplexDouble);
     g->W_size     = npointing * nstation * nchan * npol * sizeof(ComplexDouble);
-    g->J_size     = npointing * nstation * nchan * npol * npol * sizeof(ComplexDouble);
+    g->J_size     = nstation * nchan * npol * npol * sizeof(ComplexDouble);
 
     // Allocate host memory
     //g->W  = (ComplexDouble *)malloc( g->W_size );

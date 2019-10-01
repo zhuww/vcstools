@@ -177,8 +177,8 @@ void get_delays(
         struct metafits_info  *mi,
         ComplexDouble       *****complex_weights_array,  
                       // output: complex_weights_array[nsec][npointing][ant][ch][pol]
-        ComplexDouble      ******invJi                   
-                      // output: invJi[nsec][npointing][ant][ch][pol][pol]
+        ComplexDouble        ****invJi                   
+                      // output: invJi[ant][ch][pol][pol]
         ) {
     // Set up timing for each section
     double setup_total_time, compcalc_total_time, invJi_total_time;
@@ -440,16 +440,17 @@ void get_delays(
 
                     start = clock();
                     // Now, calculate the inverse Jones matrix
-                    if (pol == 0) {
+                    // Since it is time and direction independant only do it once
+                    if ( (pol == 0) && (s == 0) && (p == 0) ){
                         conj2x2( Ji, Ji ); // The RTS conjugates the sky so beware
                         Fnorm = norm2x2( Ji, Ji );
 
                         if (Fnorm != 0.0)
-                            inv2x2S( Ji, invJi[s][p][ant][ch] );
+                            inv2x2S( Ji, invJi[ant][ch] );
                         else {
                             for (p1 = 0; p1 < NPOL;  p1++)
                             for (p2 = 0; p2 < NPOL;  p2++)
-                                invJi[s][p][ant][ch][p1][p2] = CMaked( 0.0, 0.0 );
+                                invJi[ant][ch][p1][p2] = CMaked( 0.0, 0.0 );
                         }
                     }
                     invJi_total_time += ((double) (clock() - start));

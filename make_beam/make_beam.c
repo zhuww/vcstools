@@ -186,9 +186,9 @@ int main(int argc, char **argv)
 
     // Allocate memory
     char **filenames = create_filenames( &opts );
-    ComplexDouble  *****complex_weights_array = create_complex_weights( nfiles, npointing, nstation, nchan, npol );
-    ComplexDouble ******invJi                 = create_invJi( nfiles, npointing, nstation, nchan, npol );
-    ComplexDouble   ****detected_beam         = create_detected_beam( npointing, 3*opts.sample_rate, nchan, npol );
+    ComplexDouble *****complex_weights_array = create_complex_weights( nfiles, npointing, nstation, nchan, npol );
+    ComplexDouble  ****invJi                 = create_invJi( nstation, nchan, npol );
+    ComplexDouble  ****detected_beam         = create_detected_beam( npointing, 3*opts.sample_rate, nchan, npol );
 
     // Read in info from metafits file
     fprintf( stderr, "[%f]  Reading in metafits file information from %s\n", NOW-begintime, opts.metafits);
@@ -505,7 +505,7 @@ int main(int argc, char **argv)
                 fprintf( stderr, "[%f] [%d/%d] Calculating beam\n", NOW-begintime,
                                         file_no+1, nfiles);
                 
-                cu_form_beam( data, &opts, complex_weights_array[file_no], invJi[file_no], file_no,
+                cu_form_beam( data, &opts, complex_weights_array[file_no], invJi, file_no,
                               npointing, nstation, nchan, npol, outpol_coh, invw, &gf,
                               detected_beam, data_buffer_coh, data_buffer_incoh,
                               streams );
@@ -594,7 +594,7 @@ int main(int argc, char **argv)
     // Free up memory
     destroy_filenames( filenames, &opts );
     destroy_complex_weights( complex_weights_array, nfiles, npointing, nstation, nchan );
-    destroy_invJi( invJi, npointing, nfiles, nstation, nchan, npol );
+    destroy_invJi( invJi, nstation, nchan, npol );
     destroy_detected_beam( detected_beam, npointing, 3*opts.sample_rate, nchan );
     
     destroy_metafits_info( &mi );
@@ -1038,60 +1038,44 @@ void destroy_complex_weights( ComplexDouble *****array, int nfiles, int npointin
 }
 
 
-ComplexDouble ******create_invJi( int nfiles, int npointing, int nstation, int nchan, int npol )
+ComplexDouble ****create_invJi( int nstation, int nchan, int npol )
 // Allocate memory for (inverse) Jones matrices
 {
-    int f, p, ant, pol, ch; // Loop variables
-    ComplexDouble ******invJi;
+    int ant, pol, ch; // Loop variables
+    ComplexDouble ****invJi;
     
-    invJi = (ComplexDouble ******)malloc( nfiles * sizeof(ComplexDouble *****) );
-    for (f = 0; f < nfiles; f++)
+    invJi = (ComplexDouble ****)malloc( nstation * sizeof(ComplexDouble ***) );
+
+    for (ant = 0; ant < nstation; ant++)
     {
-        invJi[f] = (ComplexDouble *****)malloc( npointing * sizeof(ComplexDouble ****) );
-        for (p = 0; p < npointing; p++)
+        invJi[ant] =(ComplexDouble ***)malloc( nchan * sizeof(ComplexDouble **) );
+
+        for (ch = 0; ch < nchan; ch++)
         {
-            invJi[f][p] = (ComplexDouble ****)malloc( nstation * sizeof(ComplexDouble ***) );
+            invJi[ant][ch] = (ComplexDouble **)malloc( npol * sizeof(ComplexDouble *) );
 
-            for (ant = 0; ant < nstation; ant++)
-            {
-                invJi[f][p][ant] =(ComplexDouble ***)malloc( nchan * sizeof(ComplexDouble **) );
-
-                for (ch = 0; ch < nchan; ch++)
-                {
-                    invJi[f][p][ant][ch] = (ComplexDouble **)malloc( npol * sizeof(ComplexDouble *) );
-
-                    for (pol = 0; pol < npol; pol++)
-                        invJi[f][p][ant][ch][pol] = (ComplexDouble *)malloc( npol * sizeof(ComplexDouble) );
-                }
-            }
+            for (pol = 0; pol < npol; pol++)
+                invJi[ant][ch][pol] = (ComplexDouble *)malloc( npol * sizeof(ComplexDouble) );
         }
     }
     return invJi;
 }
 
 
-void destroy_invJi( ComplexDouble ******array, int nfiles, int npointing, int nstation, int nchan, int npol )
+void destroy_invJi( ComplexDouble ****array, int nstation, int nchan, int npol )
 {
-    int f, p, ant, ch, pol;
-    for (f = 0; f < nfiles; f++)
+    int ant, ch, pol;
+    for (ant = 0; ant < nstation; ant++)
     {
-        for (p = 0; p < npointing; p++)
+        for (ch = 0; ch < nchan; ch++)
         {
-            for (ant = 0; ant < nstation; ant++)
-            {
-                for (ch = 0; ch < nchan; ch++)
-                {
-                    for (pol = 0; pol < npol; pol++)
-                        free( array[f][p][ant][ch][pol] );
+            for (pol = 0; pol < npol; pol++)
+                free( array[ant][ch][pol] );
 
-                    free( array[f][p][ant][ch] );
-                }
-
-                free( array[f][p][ant] );
-            }
-            free( array[f][p] );
+            free( array[ant][ch] );
         }
-        free( array[f] );
+
+        free( array[ant] );
     }
     free( array );
 }

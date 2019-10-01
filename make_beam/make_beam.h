@@ -25,9 +25,8 @@ ComplexDouble *****create_complex_weights( int nfiles, int npointing, int nstati
 void              destroy_complex_weights( ComplexDouble *****array, int nfiles,
                                            int npointing, int nstation, int nchan );
 
-ComplexDouble ******create_invJi( int nfiles, int npointing, int nstation, int nchan, int pol );
-void               destroy_invJi( ComplexDouble ******array, int nfiles, int npointing, 
-                                  int nstation, int nchan, int npol );
+ComplexDouble ****create_invJi( int nstation, int nchan, int pol );
+void             destroy_invJi( ComplexDouble ****array, int nstation, int nchan, int npol );
 
 ComplexDouble ****create_detected_beam( int npointing, int nsamples, int nchan, int npol );
 void             destroy_detected_beam( ComplexDouble ****array, int npointing, 
