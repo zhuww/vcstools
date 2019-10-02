@@ -30,11 +30,14 @@ struct gpu_formbeam_arrays
     size_t Bd_size;
     size_t W_size;
     size_t J_size;
+    size_t JD_size;
     ComplexDouble *W, *d_W;
     ComplexDouble *J, *d_J;
     ComplexDouble *Bd, *d_Bd;
+    ComplexDouble *d_JDx, *d_JDy;
     uint8_t *d_data;
     float   *d_coh;
+    float   *d_Ia;
     float   *d_incoh;
 };
 
@@ -51,6 +54,10 @@ void free_formbeam( struct gpu_formbeam_arrays *g );
                             ANT2PFB(a)  * (NINC*NREC)           + \
                             AP2REC(a,p) * (NINC)                + \
                             ANT2INC(a))
+
+#define JD_IDX(s,c,a,nc)  ((s) * (NANT*(nc)) + \
+                           (c) * (NANT) + \
+                           (a))
 
 #define W_IDX(p,a,c,pol,nc)   ((p) * (NPOL*(nc)*NANT)  + \
                                (a) * (NPOL*(nc))       + \
@@ -110,7 +117,7 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts, ComplexDouble ***
                    int npointing, int nstation, int nchan,
                    int npol, int outpol_coh, double invw, struct gpu_formbeam_arrays *g,
                    ComplexDouble ****detected_beam, float *coh, float *incoh,
-                   cudaStream_t *streams );
+                   cudaStream_t *streams, int incoh_check );
 
 float *create_pinned_data_buffer_psrfits( size_t size );
         

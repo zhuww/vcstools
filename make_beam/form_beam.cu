@@ -57,21 +57,74 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 // maximum number of pointings (currently)
 #define NPOINTING 4
 
+__global__ void invj_the_data( uint8_t       *data,
+                               ComplexDouble *J,
+                               ComplexDouble *W,
+                               ComplexDouble *JDx,
+                               ComplexDouble *JDy,
+                               float         *Ia,
+                               int            incoh )
+/* Layout for input arrays:
+ *   data [nsamples] [nchan] [NPFB] [NREC] [NINC] -- see docs
+ *   J    [NSTATION] [nchan] [NPOL] [NPOL]        -- jones matrix
+ *   incoh --true if outputing an incoherent beam
+ * Layout for output arrays:
+ *   JDx  [nsamples] [nchan] [NPFB] [NREC] [NINC]
+ *   JDy  [nsamples] [nchan] [NPFB] [NREC] [NINC]
+ */
+{
+    // Translate GPU block/thread numbers into meaning->l names
+    int c    = blockIdx.x;  /* The (c)hannel number */
+    int nc   = gridDim.x;   /* The (n)umber of (c)hannels (=128) */
+    int s    = blockIdx.y;  /* The (s)ample number */
+    
+    int ant  = threadIdx.x; /* The (ant)enna number */
+    
+    ComplexDouble Dx, Dy;
+    // Convert input data to complex float
+    Dx  = UCMPLX4_TO_CMPLX_FLT(data[D_IDX(s,c,ant,0,nc)]);
+    Dy  = UCMPLX4_TO_CMPLX_FLT(data[D_IDX(s,c,ant,1,nc)]);
+
+    // If tile is flagged in the calibration, flag it in the incoherent beam
+    if (incoh)
+    {
+        if (CReald(W[W_IDX(0,ant,c,0,nc)]) == 0.0 &&
+            CImagd(W[W_IDX(0,ant,c,0,nc)]) == 0.0 &&
+            CReald(W[W_IDX(0,ant,c,1,nc)]) == 0.0 &&
+            CImagd(W[W_IDX(0,ant,c,1,nc)]) == 0.0)
+            Ia[JD_IDX(s,c,ant,nc)] = 0.0;
+        else
+            Ia[JD_IDX(s,c,ant,nc)] = DETECT(Dx) + DETECT(Dy);
+    }
+
+    // Calculate the first step (J*D) of the coherent beam (B = J*W*D)
+    //JDx = Jxx*Dx + Jxy*Dy
+    //JDy = Jyx*Dx + Jyy*Dy
+    //TODO The Jyx/Jxy terms ay be the wrong way around, double check this
+    JDx[JD_IDX(s,c,ant,nc)] = CAddd( CMuld( J[J_IDX(ant,c,0,0,nc)], Dx ),
+                                     CMuld( J[J_IDX(ant,c,1,0,nc)], Dy ) );
+    JDy[JD_IDX(s,c,ant,nc)] = CAddd( CMuld( J[J_IDX(ant,c,0,1,nc)], Dx ),
+                                     CMuld( J[J_IDX(ant,c,1,1,nc)], Dy ) );
 
 
-__global__ void beamform_kernel( uint8_t *data,
+}
+
+__global__ void beamform_kernel( ComplexDouble *JDx,
+                                 ComplexDouble *JDy,
                                  ComplexDouble *W,
-                                 ComplexDouble *J,
+                                 float *Iin,
                                  double invw,
                                  ComplexDouble *Bd,
                                  float *C,
                                  float *I,
                                  int p,
-                                 int coh_pol)
+                                 int coh_pol,
+                                 int incoh )
 /* Layout for input arrays:
- *   data [nsamples] [nchan] [NPFB] [NREC] [NINC] -- see docs
+ *   JDx  [nsamples] [nchan] [NPFB] [NREC] [NINC]
+ *   JDy  [nsamples] [nchan] [NPFB] [NREC] [NINC]
  *   W    [NSTATION] [nchan] [NPOL]               -- weights array
- *   J    [NSTATION] [nchan] [NPOL] [NPOL]        -- jones matrix
+ *   incoh --true if outputing an incoherent beam
  * Layout for output arrays:
  *   Bd   [nsamples] [nchan]   [NPOL]             -- detected beam
  *   C    [nsamples] [NSTOKES] [nchan]            -- coherent full stokes
@@ -81,13 +134,13 @@ __global__ void beamform_kernel( uint8_t *data,
  */
 {
     // Translate GPU block/thread numbers into meaning->l names
-    int s    = blockIdx.x;  /* The (s)ample number */
-    int ns   = gridDim.x;   /* The (n)umber of (s)amples (=10000)*/
-    int c    = blockIdx.y;  /* The (c)hannel number */
-    int nc   = gridDim.y;   /* The (n)umber of (c)hannels (=128) */
+    int c    = blockIdx.x;  /* The (c)hannel number */
+    int nc   = gridDim.x;   /* The (n)umber of (c)hannels (=128) */
+    int s    = blockIdx.y;  /* The (s)ample number */
+    int ns   = gridDim.y;   /* The (n)umber of (s)amples (=10000)*/
     
     int ant  = threadIdx.x; /* The (ant)enna number */
-    int nant = blockDim.x;  /* The (n_umber of (ant)ennas */
+    int nant = blockDim.x;  /* The (n)_umber of (ant)ennas */
 
     /*// GPU profiling
     clock_t start, stop;
@@ -97,8 +150,6 @@ __global__ void beamform_kernel( uint8_t *data,
     // Calculate the beam and the noise floor
     __shared__ double Ia[NSTATION];
     __shared__ ComplexDouble Bx[NSTATION], By[NSTATION];
-    ComplexDouble Dx, Dy;
-    ComplexDouble WDx, WDy;
 
     __shared__ ComplexDouble Nxx[NSTATION], Nxy[NSTATION],
                              Nyy[NSTATION];//Nyx[NSTATION]
@@ -111,18 +162,12 @@ __global__ void beamform_kernel( uint8_t *data,
     Bx[ant]  = CMaked( 0.0, 0.0 );
     By[ant]  = CMaked( 0.0, 0.0 );
 
-    Dx  = CMaked( 0.0, 0.0 );
-    Dy  = CMaked( 0.0, 0.0 );
-
-    WDx = CMaked( 0.0, 0.0 );
-    WDy = CMaked( 0.0, 0.0 );
-
     Nxx[ant] = CMaked( 0.0, 0.0 );
     Nxy[ant] = CMaked( 0.0, 0.0 );
     //Nyx[ant] = CMaked( 0.0, 0.0 );
     Nyy[ant] = CMaked( 0.0, 0.0 );
 
-    if ( p == 0 ) Ia[ant] = 0.0;
+    if ((p == 0) && (incoh)) Ia[ant] = Iin[JD_IDX(s,c,ant,nc)];
 
     /*if ((p == 0) && (ant == 0) && (c == 0) && (s == 0))
     {
@@ -133,27 +178,8 @@ __global__ void beamform_kernel( uint8_t *data,
     
     // Calculate beamform products for each antenna, and then add them together
     // Calculate the coherent beam (B = J*W*D)
-    Dx  = UCMPLX4_TO_CMPLX_FLT(data[D_IDX(s,c,ant,0,nc)]);
-    Dy  = UCMPLX4_TO_CMPLX_FLT(data[D_IDX(s,c,ant,1,nc)]);
-
-
-    if ( p == 0 )
-    {
-        if (CReald(W[W_IDX(p,ant,c,0,nc)]) == 0.0 &&
-            CImagd(W[W_IDX(p,ant,c,0,nc)]) == 0.0 &&
-            CReald(W[W_IDX(p,ant,c,1,nc)]) == 0.0 &&
-            CImagd(W[W_IDX(p,ant,c,1,nc)]) == 0.0)
-            Ia[ant] = 0.0;
-        else
-            Ia[ant] = DETECT(Dx) + DETECT(Dy);
-    }
-    WDx = CMuld( W[W_IDX(p,ant,c,0,nc)], Dx );
-    WDy = CMuld( W[W_IDX(p,ant,c,1,nc)], Dy );
-
-    Bx[ant] = CAddd( CMuld( J[J_IDX(ant,c,0,0,nc)], WDx ),
-                     CMuld( J[J_IDX(ant,c,1,0,nc)], WDy ) );
-    By[ant] = CAddd( CMuld( J[J_IDX(ant,c,0,1,nc)], WDx ),
-                     CMuld( J[J_IDX(ant,c,1,1,nc)], WDy ) );
+    Bx[ant] = CMuld( W[W_IDX(p,ant,c,0,nc)], JDx[JD_IDX(s,c,ant,nc)] );
+    By[ant] = CMuld( W[W_IDX(p,ant,c,1,nc)], JDy[JD_IDX(s,c,ant,nc)] );
 
     Nxx[ant] = CMuld( Bx[ant], CConjd(Bx[ant]) );
     Nxy[ant] = CMuld( Bx[ant], CConjd(By[ant]) );
@@ -176,7 +202,7 @@ __global__ void beamform_kernel( uint8_t *data,
     {
         if (ant < h_ant)
         {
-            if (p == 0) Ia[ant] += Ia[ant+h_ant];
+            if ( (p == 0) && (incoh)) Ia[ant] += Ia[ant+h_ant];
             Bx[ant]  = CAddd( Bx[ant],  Bx[ant  + h_ant] );
             By[ant]  = CAddd( By[ant],  By[ant  + h_ant] );
             Nxx[ant] = CAddd( Nxx[ant], Nxx[ant + h_ant] );
@@ -208,7 +234,7 @@ __global__ void beamform_kernel( uint8_t *data,
                                  Nxy[0] );
 
         // The incoherent beam
-        I[I_IDX(s,c,nc)] = Ia[0];
+        if ( (p == 0) && (incoh)) I[I_IDX(s,c,nc)] = Ia[0];
 
         // Stokes I, Q, U, V:
         C[C_IDX(p,s,0,c,ns,coh_pol,nc)] = invw*(bnXX + bnYY);
@@ -317,6 +343,8 @@ __global__ void flatten_bandpass_C_kernel(float *C, int nstep )
 
 }
 
+                 
+
 
 void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
                    ComplexDouble ****complex_weights_array,
@@ -325,7 +353,7 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
                    int npol, int outpol_coh, double invw,
                    struct gpu_formbeam_arrays *g,
                    ComplexDouble ****detected_beam, float *coh, float *incoh,
-                   cudaStream_t *streams )
+                   cudaStream_t *streams, int incoh_check)
 /* The CPU version of the beamforming operations, using OpenMP for
  * parallelisation.
  *
@@ -385,18 +413,24 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
     gpuErrchk(cudaMemcpyAsync( g->d_data, data, g->data_size, cudaMemcpyHostToDevice ));
 
     // Call the kernels
-    // sammples_chan(index=blockIdx.x  size=gridDim.x,
-    //               index=blockIdx.y  size=gridDim.y)
-    // stat_point   (index=threadIdx.x size=blockDim.x,
-    //               index=threadIdx.y size=blockDim.y)
-    dim3 samples_chan(opts->sample_rate, nchan);
+    // samples_chan(index=blockIdx.x  size=gridDim.x,
+    //              index=blockIdx.y  size=gridDim.y)
+    // stat_point  (index=threadIdx.x size=blockDim.x,
+    //              index=threadIdx.y size=blockDim.y)
+    //dim3 samples_chan(opts->sample_rate, nchan);
+    dim3 chan_samples(nchan, opts->sample_rate);
     dim3 stat(NSTATION);
+
+    // convert the data and multiply it by J
+    invj_the_data<<<chan_samples, stat>>>( g->d_data, g->d_J, g->d_W, g->d_JDx, g->d_JDy,
+                                           g->d_Ia, incoh_check );
+
     // Send off a parrellel cuda stream for each pointing
     for ( int p = 0; p < npointing; p++ )
     {    
-        beamform_kernel<<<samples_chan, stat, 0, streams[p]>>>( g->d_data,
-                            g->d_W, g->d_J, invw, 
-                            g->d_Bd, g->d_coh, g->d_incoh, p, outpol_coh );
+        beamform_kernel<<<chan_samples, stat, 0, streams[p]>>>( g->d_JDx, g->d_JDy,
+                            g->d_W, g->d_Ia, invw, 
+                            g->d_Bd, g->d_coh, g->d_incoh, p, outpol_coh , incoh_check);
             
         gpuErrchk( cudaPeekAtLastError() );
 
@@ -451,6 +485,7 @@ void malloc_formbeam( struct gpu_formbeam_arrays *g, unsigned int sample_rate,
     g->Bd_size    = npointing * sample_rate * nchan * npol * sizeof(ComplexDouble);
     g->W_size     = npointing * nstation * nchan * npol * sizeof(ComplexDouble);
     g->J_size     = nstation * nchan * npol * npol * sizeof(ComplexDouble);
+    g->JD_size    = sample_rate * nstation * nchan * sizeof(ComplexDouble);
 
     // Allocate host memory
     //g->W  = (ComplexDouble *)malloc( g->W_size );
@@ -462,19 +497,23 @@ void malloc_formbeam( struct gpu_formbeam_arrays *g, unsigned int sample_rate,
     cudaCheckErrors("cudaMallocHost J fail");
     cudaMallocHost( &g->Bd, g->Bd_size );
     cudaCheckErrors("cudaMallocHost Bd fail");
+    
+    int GPU_mem = (g->W_size + g->J_size + g->Bd_size + g->data_size + 
+                      g->coh_size + g->incoh_size + 3*g->JD_size) /1000000000;
+    
+    fprintf( stderr, "[%f]  %d GB GPU memory allocated\n", time, GPU_mem );
 
     // Allocate device memory
     gpuErrchk(cudaMalloc( (void **)&g->d_W,     g->W_size ));
     gpuErrchk(cudaMalloc( (void **)&g->d_J,     g->J_size ));
+    gpuErrchk(cudaMalloc( (void **)&g->d_JDx,   g->JD_size ));
+    gpuErrchk(cudaMalloc( (void **)&g->d_JDy,   g->JD_size ));
+    gpuErrchk(cudaMalloc( (void **)&g->d_Ia,    g->JD_size ));
     gpuErrchk(cudaMalloc( (void **)&g->d_Bd,    g->Bd_size ));
     gpuErrchk(cudaMalloc( (void **)&g->d_data,  g->data_size ));
     gpuErrchk(cudaMalloc( (void **)&g->d_coh,   g->coh_size ));
     gpuErrchk(cudaMalloc( (void **)&g->d_incoh, g->incoh_size ));
 
-    fprintf( stderr, "[%f]  %d GB GPU memory allocated\n", time, (g->W_size + g->J_size + 
-                                            g->Bd_size + g->data_size +
-                                            g->coh_size + g->incoh_size)
-                                            /1000000000 );
 }
 
 void free_formbeam( struct gpu_formbeam_arrays *g )
