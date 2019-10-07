@@ -497,6 +497,14 @@ void malloc_formbeam( struct gpu_formbeam_arrays *g, unsigned int sample_rate,
     cudaCheckErrors("cudaMallocHost J fail");
     cudaMallocHost( &g->Bd, g->Bd_size );
     cudaCheckErrors("cudaMallocHost Bd fail");
+
+    fprintf( stderr, "[%f] coh_size   %d  MB GPU mem\n", time, g->coh_size  /1000000 );
+    fprintf( stderr, "[%f] incoh_size %d  MB GPU mem\n", time, g->incoh_size/1000000 );
+    fprintf( stderr, "[%f] data_size  %d  MB GPU mem\n", time, g->data_size /1000000 );
+    fprintf( stderr, "[%f] Bd_size    %d  MB GPU mem\n", time, g->Bd_size   /1000000 );
+    fprintf( stderr, "[%f] W_size     %d  MB GPU mem\n", time, g->W_size    /1000000 );
+    fprintf( stderr, "[%f] J_size     %d  MB GPU mem\n", time, g->J_size    /1000000 );
+    fprintf( stderr, "[%f] JD_size    %d  MB GPU mem\n", time, g->JD_size   /1000000 );
     
     int GPU_mem = (g->W_size + g->J_size + g->Bd_size + g->data_size + 
                       g->coh_size + g->incoh_size + 3*g->JD_size) /1000000000;
