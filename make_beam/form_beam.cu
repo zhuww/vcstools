@@ -347,7 +347,7 @@ __global__ void flatten_bandpass_C_kernel(float *C, int nstep )
 
 
 void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
-                   ComplexDouble ****complex_weights_array,
+                   ComplexDouble *****complex_weights_array,
                    ComplexDouble ****invJi, int file_no, 
                    int npointing, int nstation, int nchan,
                    int npol, int outpol_coh, double invw,
@@ -396,7 +396,7 @@ void cu_form_beam( uint8_t *data, struct make_beam_opts *opts,
              ant * (npol*nchan) +
              ch  * (npol) +
              pol;
-        g->W[Wi] = complex_weights_array[p][ant][ch][pol];
+        g->W[Wi] = complex_weights_array[p][file_no][ant][ch][pol];
 
         for (pol2 = 0; pol2 < npol; pol2++)
         {
