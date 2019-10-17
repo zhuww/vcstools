@@ -163,8 +163,8 @@ def from_power_to_gain(powers,cfreq,n,coh=True):
         coeff = obswl**2*16*n/(4*np.pi*k_B.value)
     else:
         coeff = obswl**2*16*sqrt(n)/(4*np.pi*k_B.value)
-    logger.debug("Wavelength",obswl,"m")
-    logger.debug("Gain coefficient:",coeff)
+    logger.debug("Wavelength {}m".format(obswl))
+    logger.debug("Gain coefficient:{}".format(coeff))
     SI_to_Jy = 1e-26
     return (powers*coeff)*SI_to_Jy
 
@@ -297,7 +297,7 @@ def flux_cal_and_sumbit(time_detection, time_obs, metadata, bestprof_data,
                                                np.array([["source", pul_ra, pul_dec]]),
                                                dt=100, start_time=int(obsstart - obsid))
     bandpowers = np.mean(bandpowers)
-    
+    logger.debug("bandpowers: {}".format(bandpowers)) 
     #supress print statements of the make_primarybeammap function
     sys.stdout = open(os.devnull, 'w')
     beamsky_sum_XX,beam_sum_XX,Tant_XX,beam_dOMEGA_sum_XX,\
@@ -312,9 +312,11 @@ def flux_cal_and_sumbit(time_detection, time_obs, metadata, bestprof_data,
     logger.info("Tant: " + str(tant))
     t_sys_table = tant + get_Trec(trec_table,centrefreq)
     
-    logger.info("Converting to gain from power...")
+    logger.debug("bandpowers: {}".format(bandpowers)) 
+    logger.debug("centre freq: {}MHz".format(centrefreq))
+    logger.debug("nyumber of tiles: {}".format(ntiles))
+    logger.debug("coh?: {}".format(coh)) 
     gain = from_power_to_gain(bandpowers,centrefreq*1e6,ntiles,coh)
-    logger.debug('Frequency {0} Hz'.format(centrefreq*1e6))
     
     t_sys = np.mean(t_sys_table)
     avg_power = np.mean(bandpowers)
@@ -404,9 +406,10 @@ def flux_cal_and_sumbit(time_detection, time_obs, metadata, bestprof_data,
         u_S_mean = math.sqrt( math.pow(S_mean_cons * u_sn / gain , 2)  +\
                               math.pow(sn * S_mean_cons * u_gain / math.pow(gain,2) , 2) )  
 
-        logging.debug("SN: {0}".format(sn))
-        logging.info('Smean {0:.2f} +/- {1:.2f} mJy'.format(S_mean, u_S_mean))
 
+
+    logger.debug("SN: {0}".format(sn))
+    logger.info('Smean {0:.2f} +/- {1:.2f} mJy'.format(S_mean, u_S_mean))
     logger.debug("T_sys {0} K".format(t_sys))
     logger.debug("Gain {0} K/Jy".format(gain))
     logger.debug("Equivalent width in bins: {0}".format(w_equiv_bins))
@@ -414,7 +417,7 @@ def flux_cal_and_sumbit(time_detection, time_obs, metadata, bestprof_data,
     logger.debug("Detection time: {0}".format(time_detection)) 
     logger.debug("NUmber of bins: {0}".format(num_bins))
     
-
+"""
     #calc obstype
     if (maxfreq - minfreq) == 23:
         obstype = 1
@@ -496,7 +499,7 @@ def flux_cal_and_sumbit(time_detection, time_obs, metadata, bestprof_data,
     logger.info("Observation submitted to database")
                               
     return subbands
-
+"""
 """
 Test set:
 Scattered detection (crab):
