@@ -409,6 +409,11 @@ def flux_cal_and_sumbit(time_detection, time_obs, metadata, bestprof_data,
 
     logger.debug("T_sys {0} K".format(t_sys))
     logger.debug("Gain {0} K/Jy".format(gain))
+    logger.debug("Equivalent width in bins: {0}".format(w_equiv_bins))
+    logger.debug("Bandwidth: {0}".format(bandwidth))
+    logger.debug("Detection time: {0}".format(time_detection)) 
+    logger.debug("NUmber of bins: {0}".format(num_bins))
+    
 
     #calc obstype
     if (maxfreq - minfreq) == 23:
