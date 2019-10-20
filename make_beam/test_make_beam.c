@@ -53,21 +53,26 @@ int main(int argc, char **argv)
     fftw_plan_with_nthreads( omp_get_max_threads() );
     #endif
 
+    ComplexDouble ****complex_weights_array = create_complex_weights( 2, 128, 128, 2 );
     // A place to hold the beamformer settings
     struct make_beam_opts opts;
 
     /* Set default beamformer settings */
 
     // Variables for required options
-    opts.obsid       = strdup("1166459712"); // The observation ID
+    opts.obsid = (char *) malloc(64);
+    strcpy(opts.obsid, "1166459712"); // The observation ID
     opts.begin       = 1166460000;    // GPS time -- when to start beamforming
     opts.end         = 1166460000;    // GPS time -- when to stop beamforming
-    opts.time_utc    = strdup("2016-12-22T16:39:43"); // utc time string "yyyy-mm-ddThh:mm:ss"
-    opts.pointings   = strdup("07:42:49.00_-28:21:43.00,07:42:49.00_-28:21:43.01");
+    opts.time_utc = (char *) malloc(64);
+    strcpy(opts.time_utc, "2016-12-22T16:39:43"); // utc time string "yyyy-mm-ddThh:mm:ss"
+    opts.pointings = (char *) malloc(64);
+    strcpy(opts.pointings, "07:42:49.00_-28:21:43.00,07:42:49.00_-28:21:43.01");
                        // list of pointings "dd:mm:ss_hh:mm:ss,dd:mm:ss_hh:mm:ss"
-    opts.datadir     = NULL; // The path to where the recombined data live
+    //opts.datadir     = NULL; // The path to where the recombined data live
     //opts.metafits    = NULL; // filename of the metafits file
-    opts.rec_channel = strdup("132"); // 0 - 255 receiver 1.28MHz channel
+    opts.rec_channel = (char *) malloc(64);
+    strcpy(opts.rec_channel, "132"); // 0 - 255 receiver 1.28MHz channel
     opts.frequency   = 132 * 1.28e6 - 640e3;    // = rec_channel expressed in Hz
 
     // Variables for MWA/VCS configuration
@@ -94,12 +99,15 @@ int main(int argc, char **argv)
     opts.cal.offr_chan_num     = 0;
 
     // Parse command line arguments
+    fprintf( stderr, "Parsing command line\n");
     make_beam_parse_cmdline( argc, argv, &opts );
+    fprintf( stderr, "Parsed\n");
+    
 
     // Create "shorthand" variables for options that are used frequently
-    const int nstation             = opts.nstation;
-    const int nchan                = opts.nchan;
-    const int npol           = 2;   // (X,Y)
+    int nstation             = 128;
+    int nchan                = 128;
+    int npol                 = 2;   // (X,Y)
     int outpol_coh           = 4;  // (I,Q,U,V)
     if ( opts.out_summed )
         outpol_coh           = 1;  // (I)
@@ -108,9 +116,14 @@ int main(int argc, char **argv)
     float vgain = 1.0; // This is re-calculated every second for the VDIF output
 
     // Set up test stuff
-    strncpy(opts.metafits, opts.datadir, 100);
+    fprintf( stderr, "%s\n", opts.datadir);
+    opts.metafits = (char *) malloc(64);
+    strcpy(opts.metafits, opts.datadir);
+    fprintf( stderr, "inbetween\n");
     strcat(opts.metafits, "/1166459712_metafits_ppds.fits");
-    opts.cal.filename = strdup(opts.datadir);
+    fprintf( stderr, "Parsed\n");
+    opts.cal.filename = (char *) malloc(64);
+    strcpy(opts.cal.filename, opts.datadir);
     strcat(opts.cal.filename, "/DI_JonesMatrices_node021.dat");
     
     fprintf( stderr, "%s\n", opts.metafits);
@@ -199,8 +212,10 @@ int main(int argc, char **argv)
     // Allocate memory
     fprintf(stderr, "Before\n");
     char **filenames = create_filenames( &opts );
+    fprintf(stderr, "int attempt\n");
+    //ComplexDouble ****complex_weights_array = create_complex_weights( 2, 128, 128, 2 );
     fprintf(stderr, "After\n");
-    ComplexDouble ****complex_weights_array = create_complex_weights( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol]
+    //ComplexDouble ****complex_weights_array = create_complex_weights( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol]
     fprintf(stderr, "After\n");
     ComplexDouble *****invJi = create_invJi( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol][npol]
     fprintf(stderr, "After\n");
@@ -814,189 +829,3 @@ void make_beam_parse_cmdline(
     // Check that all the required options were supplied
     assert( opts->datadir      != NULL );
 }
-
-
-
-char **create_filenames( struct make_beam_opts *opts )
-{
-    // Calculate the number of files
-    int nfiles = opts->end - opts->begin + 1;
-    if (nfiles <= 0) {
-        fprintf( stderr, "Cannot beamform on %d files (between %lu and %lu)\n",
-                 nfiles, opts->begin, opts->end);
-        exit(EXIT_FAILURE);
-    }
-    // Allocate memory for the file name list
-    char **filenames = NULL;
-    filenames = (char **)malloc( nfiles*sizeof(char *) );
-
-    // Allocate memory and write filenames
-    int second;
-    unsigned long int timestamp;
-    for (second = 0; second < nfiles; second++) {
-        timestamp = second + opts->begin;
-        filenames[second] = (char *)malloc( MAX_COMMAND_LENGTH*sizeof(char) );
-        sprintf( filenames[second], "%s/%s_%ld_ch%s.dat",
-                 opts->datadir, opts->obsid, timestamp, opts->rec_channel );
-    }
-
-    return filenames;
-}
-
-void destroy_filenames( char **filenames, struct make_beam_opts *opts )
-{
-    int nfiles = opts->end - opts->begin + 1;
-    int second;
-    for (second = 0; second < nfiles; second++)
-        free( filenames[second] );
-    free( filenames );
-}
-
-
-ComplexDouble ****create_complex_weights( int npointing, int nstation, int nchan, int npol )
-// Allocate memory for complex weights matrices
-{
-    int p, ant, ch; // Loop variables
-    ComplexDouble ****array;
-    fprintf( stderr, "%d %d %d %d\n", npointing, nstation, nchan, npol);
-    array = (ComplexDouble ****)malloc( npointing * sizeof(ComplexDouble ***) );
-    for (p = 0; p < npointing; p++)
-    {
-        fprintf( stderr, "3: %d\n", nstation);
-        array[p] = (ComplexDouble ***)malloc( nstation * sizeof(ComplexDouble **) );
-        for (ant = 0; ant < nstation; ant++)
-        {
-            fprintf( stderr, "4: %d %d \n", p, ant);
-            array[p][ant] = (ComplexDouble **)malloc( nchan * sizeof(ComplexDouble *) );
-            for (ch = 0; ch < nchan; ch++)
-                //fprintf( stderr, "5: %d %d %d\n", p, ant, ch);
-                array[p][ant][ch] = (ComplexDouble *)malloc( npol * sizeof(ComplexDouble) );
-        }
-    }
-    return array;
-}
-
-
-void destroy_complex_weights( ComplexDouble ****array, int npointing, int nstation, int nchan )
-{
-    int p, ant, ch;
-    for (p = 0; p < npointing; p++)
-    {
-        for (ant = 0; ant < nstation; ant++)
-        {
-            for (ch = 0; ch < nchan; ch++)
-                free( array[p][ant][ch] );
-
-            free( array[p][ant] );
-        }
-        free( array[p] );
-    }
-    free( array );
-}
-
-
-ComplexDouble *****create_invJi( int npointing, int nstation, int nchan, int npol )
-// Allocate memory for (inverse) Jones matrices
-{
-    int p, ant, pol, ch; // Loop variables
-    ComplexDouble *****invJi;
-    
-    invJi = (ComplexDouble *****)malloc( npointing * sizeof(ComplexDouble ****) );
-    for (p = 0; p < npointing; p++)
-    {
-        invJi[p] = (ComplexDouble ****)malloc( nstation * sizeof(ComplexDouble ***) );
-
-        for (ant = 0; ant < nstation; ant++)
-        {
-            invJi[p][ant] =(ComplexDouble ***)malloc( nchan * sizeof(ComplexDouble **) );
-
-            for (ch = 0; ch < nchan; ch++)
-            {
-                invJi[p][ant][ch] = (ComplexDouble **)malloc( npol * sizeof(ComplexDouble *) );
-
-                for (pol = 0; pol < npol; pol++)
-                    invJi[p][ant][ch][pol] = (ComplexDouble *)malloc( npol * sizeof(ComplexDouble) );
-            }
-        }
-    }
-    return invJi;
-}
-
-
-void destroy_invJi( ComplexDouble *****array, int npointing, int nstation, int nchan, int npol )
-{
-    int p, ant, ch, pol;
-    for (p = 0; p < npointing; p++)
-    {
-        for (ant = 0; ant < nstation; ant++)
-        {
-            for (ch = 0; ch < nchan; ch++)
-            {
-                for (pol = 0; pol < npol; pol++)
-                    free( array[p][ant][ch][pol] );
-
-                free( array[p][ant][ch] );
-            }
-
-            free( array[p][ant] );
-        }
-        free( array[p] );
-    }
-    free( array );
-}
-
-
-ComplexDouble ****create_detected_beam( int npointing, int nsamples, int nchan, int npol )
-// Allocate memory for complex weights matrices
-{
-    int p, s, ch; // Loop variables
-    ComplexDouble ****array;
-    
-    array = (ComplexDouble ****)malloc( npointing * sizeof(ComplexDouble ***) );
-    for (p = 0; p < npointing; p++) 
-    {
-        array[p] = (ComplexDouble ***)malloc( nsamples * sizeof(ComplexDouble **) );
-
-        for (s = 0; s < nsamples; s++)
-        {
-            array[p][s] = (ComplexDouble **)malloc( nchan * sizeof(ComplexDouble *) );
-
-            for (ch = 0; ch < nchan; ch++)
-                array[p][s][ch] = (ComplexDouble *)malloc( npol * sizeof(ComplexDouble) );
-        }
-    }
-    return array;
-}
-
-void destroy_detected_beam( ComplexDouble ****array, int npointing, int nsamples, int nchan )
-{
-    int p, s, ch;
-    for (p = 0; p < npointing; p++)    
-    {
-        for (s = 0; s < nsamples; s++)
-        {
-            for (ch = 0; ch < nchan; ch++)
-                free( array[p][s][ch] );
-
-            free( array[p][s] );
-        }
-
-        free( array[p] );
-    }
-
-    free( array );
-}
-
-float *create_data_buffer_psrfits( size_t size )
-{
-    float *ptr = (float *)malloc( size * sizeof(float) );
-    return ptr;
-}
-
-
-float *create_data_buffer_vdif( size_t size )
-{
-    float *ptr  = (float *)malloc( size * sizeof(float) );
-    return ptr;
-}
-

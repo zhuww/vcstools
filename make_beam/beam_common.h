@@ -23,6 +23,8 @@
 #define N_COPOL    2
 #define R2C_SIGN   -1.0
 
+#define MAX_COMMAND_LENGTH 1024
+
 // A structure to read in all the relevant info from the observation metafits
 // file.
 struct metafits_info {
@@ -140,5 +142,27 @@ void inv2x2S(ComplexDouble *Min, ComplexDouble **Mout);
 void mult2x2d(ComplexDouble *M1, ComplexDouble *M2, ComplexDouble *Mout);
 void conj2x2(ComplexDouble *M, ComplexDouble *Mout);
 double norm2x2(ComplexDouble *M, ComplexDouble *Mout);
+
+char **create_filenames( struct make_beam_opts *opts );
+void  destroy_filenames( char **filenames, struct make_beam_opts *opts );
+
+ComplexDouble ****create_complex_weights( int npointing, int nstation, int nchan, int npol );
+void             destroy_complex_weights( ComplexDouble ****array, int npointing,
+                                          int nstation, int nchan );
+
+ComplexDouble *****create_invJi( int npointing, int nstation, int nchan, int pol );
+void              destroy_invJi( ComplexDouble *****array, int npointing,
+                                 int nstation, int nchan, int npol );
+
+ComplexDouble ****create_detected_beam( int npointing, int nsamples, int nchan, int npol );
+void            destroy_detected_beam( ComplexDouble ****array, int npointing,
+                                       int nsamples, int nchan );
+
+float *create_data_buffer_psrfits( size_t size );
+float *create_data_buffer_vdif( size_t size );
+
+
+
+
 
 #endif
