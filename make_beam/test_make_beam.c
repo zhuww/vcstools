@@ -53,7 +53,6 @@ int main(int argc, char **argv)
     fftw_plan_with_nthreads( omp_get_max_threads() );
     #endif
 
-    ComplexDouble ****complex_weights_array = create_complex_weights( 2, 128, 128, 2 );
     // A place to hold the beamformer settings
     struct make_beam_opts opts;
 
@@ -213,9 +212,8 @@ int main(int argc, char **argv)
     fprintf(stderr, "Before\n");
     char **filenames = create_filenames( &opts );
     fprintf(stderr, "int attempt\n");
-    //ComplexDouble ****complex_weights_array = create_complex_weights( 2, 128, 128, 2 );
     fprintf(stderr, "After\n");
-    //ComplexDouble ****complex_weights_array = create_complex_weights( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol]
+    ComplexDouble ****complex_weights_array = create_complex_weights( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol]
     fprintf(stderr, "After\n");
     ComplexDouble *****invJi = create_invJi( npointing, nstation, nchan, npol ); // [npointing][nstation][nchan][npol][npol]
     fprintf(stderr, "After\n");
@@ -543,51 +541,117 @@ int main(int argc, char **argv)
                         complex_weights_array,  // complex weights array (answer will be output here)
                         invJi );                // invJi array           (answer will be output here)
                 
-                int complex_len = npointing * nstation * nchan * npol;
-                int bi = 0;
+                // Setup test file names in the test data dir
+                char *complex_filename = (char *) malloc(64);
+                char *invJi_filename   = (char *) malloc(64);
+                strcpy(complex_filename, opts.datadir);
+                strcpy(invJi_filename,   opts.datadir);
+                strcat(complex_filename, "/complex_weights.data");
+                strcat(invJi_filename,   "/invJi.data");
+
+                fprintf( stderr, "Checking delay calcs against %s and %s\n", complex_filename,
+                                 invJi_filename);
                 
-                ComplexDouble *complex_weights_write = (ComplexDouble *)malloc((complex_len)*sizeof(ComplexDouble));
-                for (int p   = 0; p < npointing;  p++)
-                for (int ant = 0; ant < nstation; ant++)
-                for (int ch  = 0; ch < nchan;     ch++)
-                for (int pol = 0; pol < npol;     pol++)
+                int complex_len = npointing * nstation * nchan * npol;
+                int invJi_len   = complex_len * npol;
+                int p, ant, ch, pol, pol2;
+                int Wi, Ji;
+                    
+                FILE *cfile, *ifile;
+                if (opts.write)
                 {
-                    complex_weights_write[bi] = complex_weights_array[p][ant][ch][pol];
-                    bi++;
+                    // Writing out the current data to be compared with future tests
+                    ComplexDouble *complex_weights_write = (ComplexDouble *)malloc((complex_len)*sizeof(ComplexDouble));
+                    ComplexDouble *invJi_write = (ComplexDouble *)malloc((invJi_len)*sizeof(ComplexDouble));
+                    for (p   = 0; p   < npointing; p++  )
+                    for (ant = 0; ant < nstation ; ant++)
+                    for (ch  = 0; ch  < nchan    ; ch++ )
+                    for (pol = 0; pol < npol     ; pol++)
+                    {
+                        Wi = p   * (npol*nchan*nstation) +
+                             ant * (npol*nchan) +
+                             ch  * (npol) +
+                             pol;
+                        complex_weights_write[Wi] = complex_weights_array[p][ant][ch][pol];
+
+                        for (pol2 = 0; pol2 < npol; pol2++)
+                        {
+                            Ji = Wi*npol + pol2;
+                            invJi_write[Ji] = invJi[p][ant][ch][pol][pol2];
+                        }
+                    }
+                    cfile = fopen(complex_filename, "wb");
+                    ifile = fopen(invJi_filename,   "wb");
+                    fwrite(complex_weights_write, sizeof(ComplexDouble), complex_len, cfile);
+                    fwrite(invJi_write,           sizeof(ComplexDouble), invJi_len,   ifile);
+                    fclose(cfile);
+                    fclose(ifile);
                 }
 
-                FILE *f = fopen("complex_weights.data", "w");
-                fwrite(complex_weights_write, sizeof(ComplexDouble), complex_len, f);
-                fclose(f);
-
-                f = fopen("complex_weights.data", "r");
-                fseek(f, 0, SEEK_END);
+                // Read in data
+                cfile = fopen(complex_filename, "rb");
+                ifile = fopen(invJi_filename,   "rb");
+                /*/ make sure files are at the start
+                fseek(cfile, 0, SEEK_END);
+                fseek(ifile, 0, SEEK_END);
                 long filelen = ftell(f);
                 rewind(f);
-                ComplexDouble *buffer = (ComplexDouble *)malloc((filelen+1)*sizeof(ComplexDouble));
-                fread(buffer, sizeof(ComplexDouble), filelen, f);
-                //ComplexDouble ****file_complex_weights_array = create_complex_weights(
-                //                                        npointing, nstation, nchan, npol );
-                bi = 0;
-                for (int p   = 0; p < npointing;  p++)
-                for (int ant = 0; ant < nstation; ant++)
-                for (int ch  = 0; ch < nchan;     ch++)
-                for (int pol = 0; pol < npol;     pol++)
+                */
+                ComplexDouble *complex_read = (ComplexDouble *)malloc((complex_len+1)*
+                                              sizeof(ComplexDouble));
+                ComplexDouble *invJi_read = (ComplexDouble *)malloc((invJi_len+1)*
+                                              sizeof(ComplexDouble));
+                fread(complex_read, sizeof(ComplexDouble), complex_len, cfile);
+                fread(invJi_read,   sizeof(ComplexDouble), invJi_len,   ifile);
+                
+                // Looping over data and checking it
+                int check_passed = 1;
+                for (p   = 0; p < npointing;  p++)
+                for (ant = 0; ant < nstation; ant++)
+                for (ch  = 0; ch < nchan;     ch++)
+                for (pol = 0; pol < npol;     pol++)
                 {
-                    if (CReald(complex_weights_array[p][ant][ch][pol]) != CReald(buffer[bi]) 
-                     && CImagd(complex_weights_array[p][ant][ch][pol]) != CImagd(buffer[bi])) 
+                    Wi = p   * (npol*nchan*nstation) +
+                         ant * (npol*nchan) +
+                         ch  * (npol) +
+                         pol;
+                    if (CReald(complex_weights_array[p][ant][ch][pol]) != CReald(complex_read[Wi]) 
+                     || CImagd(complex_weights_array[p][ant][ch][pol]) != CImagd(complex_read[Wi])) 
                     {
-                        fprintf( stderr,  "NOT EQUAL %i\n", bi);
+                        fprintf( stderr,  "Complex weights error. ID: %i\n", Wi);
                         fprintf( stderr,  "%f   !=  %f\n",
                                 CReald(complex_weights_array[p][ant][ch][pol]),
-                                CReald(buffer[bi]));
+                                CReald(complex_read[Wi]));
                         fprintf( stderr,  "%f   !=  %f\n",
                                 CImagd(complex_weights_array[p][ant][ch][pol]),
-                                CImagd(buffer[bi]));
+                                CImagd(complex_read[Wi]));
+                        check_passed = 0;
                     }
-                    bi++;
+                    for (pol2 = 0; pol2 < npol; pol2++)
+                    {
+                        Ji = Wi*npol + pol2;
+                        if ((abs(CReald(invJi[p][ant][ch][pol][pol2])-CReald(invJi_read[Ji])) > 0.00000000000001)
+                         || (abs(CImagd(invJi[p][ant][ch][pol][pol2])-CImagd(invJi_read[Ji])) > 0.00000000000001))
+                        {
+                            fprintf( stderr,  "invJi error. ID: %i\n", Ji);
+                            fprintf( stderr,  "%lf   !=  %lf\n",
+                                    CReald(invJi[p][ant][ch][pol][pol2]),
+                                    CReald(invJi_read[Ji]));
+                            fprintf( stderr,  "%lf   !=  %lf\n",
+                                    CImagd(invJi[p][ant][ch][pol][pol2]),
+                                    CImagd(invJi_read[Ji]));
+                            check_passed = 0;
+                        }
+                    }
                 }
-                exit(0);
+
+                if (check_passed)
+                    fprintf( stderr,  "Delay check passed\n");
+                else
+                {
+                    fprintf( stderr,  "Delay check failed. Exiting\n");
+                    exit(0);
+                }
 
                 //f = fopen("invJi.data", "wb");
                 //fwrite(clientdata, sizeof(char), sizeof(clientdata), f);
