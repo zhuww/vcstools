@@ -360,7 +360,7 @@ int main(int argc, char **argv)
     float *data_buffer_vdif1  = NULL;
     float *data_buffer_vdif2  = NULL;
 
-    /*data_buffer_coh1   = create_pinned_data_buffer_psrfits( npointing * nchan *
+    data_buffer_coh1   = create_pinned_data_buffer_psrfits( npointing * nchan *
                                                             outpol_coh * pf[0].hdr.nsblk );
     data_buffer_coh2   = create_pinned_data_buffer_psrfits( npointing * nchan * 
                                                             outpol_coh * pf[0].hdr.nsblk );
@@ -372,7 +372,7 @@ int main(int argc, char **argv)
                                                          npointing );
     data_buffer_vdif2  = create_pinned_data_buffer_vdif( vf->sizeof_buffer *
                                                          npointing );
-    */
+    
     /* Allocate host and device memory for the use of the cu_form_beam function */
     // Declaring pointers to the structs so the memory can be alternated
     struct gpu_formbeam_arrays gf;
@@ -662,6 +662,8 @@ int main(int argc, char **argv)
 
                 for (i = 0; i < npointing * nchan * outpol_incoh * opts.sample_rate; i++)
                     data_buffer_incoh[i] = 0.0;*/
+
+                fprintf( stderr, "%f\n", data_buffer_coh[0] );
                 fprintf( stderr, "[%f] [%d/%d] Calculating beam\n", NOW-begintime,
                                         file_no+1, nfiles);
                 
@@ -669,6 +671,123 @@ int main(int argc, char **argv)
                               npointing, nstation, nchan, npol, outpol_coh, invw, &gf,
                               detected_beam, data_buffer_coh, data_buffer_incoh,
                               streams );
+                
+                fprintf( stderr, "%f\n", data_buffer_coh[0] );
+                
+                // Setup test file names in the test data dir
+                char *beam_filename  = (char *) malloc(64);
+                char *coh_filename   = (char *) malloc(64);
+                char *incoh_filename = (char *) malloc(64);
+                strcpy(beam_filename,  opts.datadir);
+                strcpy(coh_filename,   opts.datadir);
+                strcpy(incoh_filename, opts.datadir);
+                strcat(beam_filename,  "/beam.data");
+                strcat(coh_filename,   "/coh.data");
+                strcat(incoh_filename, "/incoh.data");
+
+                fprintf( stderr, "[%f] [%d/%d] Testing the beam against %s, %s and %s\n",
+                                  NOW-begintime, file_no+1, nfiles, beam_filename, coh_filename,
+                                  incoh_filename );
+                
+                int beam_len  = npointing * opts.sample_rate * nchan * npol;
+                int coh_len   = npointing * opts.sample_rate * outpol_coh * nchan;
+                int incoh_len = opts.sample_rate * outpol_incoh * nchan;
+                int offset, s, bi;
+                offset = file_no % 3 * opts.sample_rate;
+                    
+                FILE *bfile, *cohfile, *incohfile;
+                if (opts.write)
+                {
+                    // Writing out the current data to be compared with future tests
+                    ComplexDouble *beam_write = (ComplexDouble *)malloc((beam_len)*sizeof(ComplexDouble));
+                    for (p   = 0; p   < npointing       ; p++  )
+                    for (s   = 0; s   < opts.sample_rate; s++  )
+                    for (ch  = 0; ch  < nchan           ; ch++ )
+                    for (pol = 0; pol < npol            ; pol++)
+                    {
+                        bi = p  * (npol*nchan*opts.sample_rate) +
+                             s  * (npol*nchan)                   +
+                             ch * (npol)                         +
+                             pol;
+
+                        beam_write[bi] = detected_beam[p][s+offset][ch][pol];
+                    }
+                    bfile     = fopen(beam_filename,  "wb");
+                    cohfile   = fopen(coh_filename,   "wb");
+                    incohfile = fopen(incoh_filename, "wb");
+                    fwrite(beam_write,        sizeof(ComplexDouble), beam_len,  bfile);
+                    fwrite(data_buffer_coh,   sizeof(float),         coh_len,   cohfile);
+                    fwrite(data_buffer_incoh, sizeof(float),         incoh_len, incohfile);
+                    fclose(bfile);
+                    fclose(cohfile);
+                    fclose(incohfile);
+                }
+
+                // Read in data
+                bfile     = fopen(beam_filename,  "rb");
+                cohfile   = fopen(coh_filename,   "rb");
+                incohfile = fopen(incoh_filename, "rb");
+                
+                ComplexDouble *beam_read = (ComplexDouble *)malloc((beam_len+1)*
+                                              sizeof(ComplexDouble));
+                float *coh_read   = (float *)malloc((coh_len  +1)*sizeof(float));
+                float *incoh_read = (float *)malloc((incoh_len+1)*sizeof(float));
+                fread(beam_read,  sizeof(ComplexDouble), beam_len,  bfile);
+                fread(coh_read,   sizeof(float),         coh_len,   cohfile);
+                fread(incoh_read, sizeof(float),         incoh_len, incohfile);
+                
+                // Looping over data and checking it
+                check_passed = 1;
+                for (p   = 0; p   < npointing       ; p++  )
+                for (s   = 0; s   < opts.sample_rate; s++  )
+                for (ch  = 0; ch  < nchan           ; ch++ )
+                for (pol = 0; pol < npol            ; pol++)
+                {
+                    bi = p  * (npol*nchan*opts.sample_rate) +
+                         s  * (npol*nchan)                   +
+                         ch * (npol)                         +
+                         pol;
+                    if (CReald(beam_read[bi]) != CReald(detected_beam[p][s+offset][ch][pol])
+                     || CImagd(beam_read[bi]) != CImagd(detected_beam[p][s+offset][ch][pol]))
+                    {
+                        fprintf( stderr, "Beam error. ID: %i\n", bi);
+                        fprintf( stderr, "%lf   !=  %lf\n", CReald(beam_read[bi]),
+                                            CReald(detected_beam[p][s+offset][ch][pol]));
+                        fprintf( stderr, "%lf   !=  %lf\n", CImagd(beam_read[bi]),
+                                            CImagd(detected_beam[p][s+offset][ch][pol]));
+                        check_passed = 0;
+                    };
+                }
+                int i;
+                for (i = 0; i < coh_len; i++)
+                {
+                    if (coh_read[i] != data_buffer_coh[i])
+                    {
+                        fprintf( stderr, "coh error. ID: %i\n", i);
+                        fprintf( stderr, "%f   !=  %f\n", coh_read[i], data_buffer_coh[i]);
+                        check_passed = 0;
+                    }
+                }
+                for (i = 0; i < incoh_len; i++)
+                {
+                    if (incoh_read[i] != data_buffer_incoh[i])
+                    {
+                        fprintf( stderr, "incoh error. ID: %i\n", i);
+                        fprintf( stderr, "%f   !=  %f\n", incoh_read[i], data_buffer_incoh[i]);
+                        check_passed = 0;
+                    }
+                }
+
+
+
+                if (check_passed)
+                    fprintf( stderr,  "form_beam check passed\n");
+                else
+                {
+                    fprintf( stderr,  "form_beam check failed. Exiting\n");
+                    exit(0);
+                }
+
 
                 // Invert the PFB, if requested
                 if (opts.out_vdif)

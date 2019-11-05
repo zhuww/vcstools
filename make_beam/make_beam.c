@@ -120,8 +120,8 @@ int main(int argc, char **argv)
     int max_npointing = 120; // Could be more
     char RAs[max_npointing][64];
     char DECs[max_npointing][64];
-    int npointing = sscanf( opts.pointings, 
-            "%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,]," , 
+    int npointing = sscanf( opts.pointings,
+            "%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,],%[^_]_%[^,]," ,
                             RAs[0],  DECs[0],  RAs[1],  DECs[1],  RAs[2],  DECs[2],
                             RAs[3],  DECs[3],  RAs[4],  DECs[4],  RAs[5],  DECs[5],
                             RAs[6],  DECs[6],  RAs[7],  DECs[7],  RAs[8],  DECs[8],
@@ -176,7 +176,7 @@ int main(int argc, char **argv)
 
     char pointing_array[npointing][2][64];
     int p;
-    for ( p = 0; p < npointing; p++) 
+    for ( p = 0; p < npointing; p++)
     {
        strcpy( pointing_array[p][0], RAs[p] );
        strcpy( pointing_array[p][1], DECs[p] );
@@ -252,7 +252,7 @@ int main(int argc, char **argv)
                              i % npol );
         }
     }
-    
+
     double wgt_sum = 0;
     for (i = 0; i < nstation*npol; i++)
         wgt_sum += mi.weights_array[i];
@@ -303,11 +303,11 @@ int main(int argc, char **argv)
             opts.time_utc, opts.sample_rate, opts.frequency, nchan,
             opts.chan_width, opts.rec_channel, delay_vals, npointing );
 
-    // To run asynchronously we require two memory allocations for each data 
+    // To run asynchronously we require two memory allocations for each data
     // set so multiple parts of the memory can be worked on at once.
     // We control this by changing the pointer to alternate between
     // the two memory allocations
-    
+
     // Create array for holding the raw data
     int bytes_per_file = opts.sample_rate * nstation * npol * nchan;
     uint8_t *data;
@@ -323,7 +323,7 @@ int main(int argc, char **argv)
     // Create output buffer arrays
     float *data_buffer_coh    = NULL;
     float *data_buffer_coh1   = NULL;
-    float *data_buffer_coh2   = NULL; 
+    float *data_buffer_coh2   = NULL;
     float *data_buffer_incoh  = NULL;
     float *data_buffer_incoh1 = NULL;
     float *data_buffer_incoh2 = NULL;
@@ -333,7 +333,7 @@ int main(int argc, char **argv)
 
     data_buffer_coh1   = create_pinned_data_buffer_psrfits( npointing * nchan *
                                                             outpol_coh * pf[0].hdr.nsblk );
-    data_buffer_coh2   = create_pinned_data_buffer_psrfits( npointing * nchan * 
+    data_buffer_coh2   = create_pinned_data_buffer_psrfits( npointing * nchan *
                                                             outpol_coh * pf[0].hdr.nsblk );
     data_buffer_incoh1 = create_pinned_data_buffer_psrfits( nchan * outpol_incoh *
                                                             pf_incoh[0].hdr.nsblk );
@@ -343,7 +343,7 @@ int main(int argc, char **argv)
                                                          npointing );
     data_buffer_vdif2  = create_pinned_data_buffer_vdif( vf->sizeof_buffer *
                                                          npointing );
-    
+
     /* Allocate host and device memory for the use of the cu_form_beam function */
     // Declaring pointers to the structs so the memory can be alternated
     struct gpu_formbeam_arrays gf;
@@ -361,16 +361,16 @@ int main(int argc, char **argv)
 
     for ( p = 0; p < npointing; p++ )
         cudaStreamCreate(&(streams[p])) ;
-    
-    // TODO work out why the below won't work. It should save a bit of time 
+
+    // TODO work out why the below won't work. It should save a bit of time
     // instead of doing the same thing every second
     //populate_weights_johnes( &gf, complex_weights_array, invJi,
     //                         npointing, nstation, nchan, npol );
-        
+
 
     fprintf( stderr, "[%f]  **BEGINNING BEAMFORMING**\n", NOW-begintime);
-    
-    // Set up sections checks that allow the asynchronous sections know when 
+
+    // Set up sections checks that allow the asynchronous sections know when
     // other sections have completed
     int file_no;
     int *read_check;
@@ -385,13 +385,13 @@ int main(int argc, char **argv)
         calc_check[file_no]  = 0;//False
         write_check[file_no] = (int*)malloc(npointing*sizeof(int));
         for ( p = 0; p < npointing; p++ ) write_check[file_no][p] = 0;//False
-    } 
-    
+    }
+
     // Set up timing for each section
     long read_total_time, calc_total_time, write_total_time;
 
     int nthread;
-    #pragma omp parallel 
+    #pragma omp parallel
     {
         #pragma omp master
         {
@@ -401,7 +401,7 @@ int main(int argc, char **argv)
     }
     int thread_no;
     int exit_check = 0;
-    // Sets up a parallel for loop for each of the available thread and 
+    // Sets up a parallel for loop for each of the available thread and
     // assigns a section to each thread
     #pragma omp parallel for shared(read_check, calc_check, write_check, pf) private( thread_no, file_no, p, exit_check, data, data_buffer_coh, data_buffer_incoh, data_buffer_vdif )
     for (thread_no = 0; thread_no < nthread; ++thread_no)
@@ -414,23 +414,23 @@ int main(int argc, char **argv)
                 //Work out which memory allocation it's requires
                 if (file_no%2 == 0) data = data1;
                 else data = data2;
-                
-                //Waits until it can read 
-                exit_check = 0; 
-                while (1) 
-                { 
-                    #pragma omp critical (read_queue) 
-                    { 
-                        if (file_no == 0) 
-                            exit_check = 1;//First read 
-                        else if ( (read_check[file_no - 1] == 1) && (file_no == 1))  
+
+                //Waits until it can read
+                exit_check = 0;
+                while (1)
+                {
+                    #pragma omp critical (read_queue)
+                    {
+                        if (file_no == 0)
+                            exit_check = 1;//First read
+                        else if ( (read_check[file_no - 1] == 1) && (file_no == 1))
                             exit_check = 1;//Second read
                         else if ( (read_check[file_no - 1] == 1) && (calc_check[file_no - 2] == 1) )
                             exit_check = 1;//Rest of the reads
                         else
                             exit_check = 0;
-                    } 
-                    if (exit_check) break; 
+                    }
+                    if (exit_check) break;
                 }
                 clock_t start = clock();
                 #pragma omp critical (read_queue)
@@ -439,7 +439,7 @@ int main(int argc, char **argv)
                     fprintf( stderr, "[%f] [%d/%d] Reading in data from %s \n", NOW-begintime,
                             file_no+1, nfiles, filenames[file_no]);
                     read_data( filenames[file_no], data, bytes_per_file  );
-                    
+
                     // Records that this read section is complete
                     read_check[file_no] = 1;
                 }
@@ -478,13 +478,13 @@ int main(int argc, char **argv)
                         // First two checks
                         if ( (file_no < 2) && (read_check[file_no] == 1) ) exit_check = 1;
                         // Rest of the checks. Checking if output memory is ready to be changed
-                        else if (read_check[file_no] == 1) 
-                        {    
+                        else if (read_check[file_no] == 1)
+                        {
                             write_array_check = 1;
                             // Loop through each pointing's write_check
                             for (int pc=0; pc<npointing; pc++)
-                            {   
-                                if (write_check[file_no - 2][pc] == 0) 
+                            {
+                                if (write_check[file_no - 2][pc] == 0)
                                 {
                                     // Not complete so changing check to False
                                     write_array_check = 0;
@@ -493,7 +493,7 @@ int main(int argc, char **argv)
                             if (write_array_check == 1) exit_check = 1;
                         }
                     }
-                    if (exit_check == 1) break; 
+                    if (exit_check == 1) break;
                 }
                 clock_t start = clock();
                 // Get the next second's worth of phases / jones matrices, if needed
@@ -520,7 +520,7 @@ int main(int argc, char **argv)
                     data_buffer_incoh[i] = 0.0;*/
                 fprintf( stderr, "[%f] [%d/%d] Calculating beam\n", NOW-begintime,
                                         file_no+1, nfiles);
-                
+
                 cu_form_beam( data, &opts, complex_weights_array, invJi, file_no,
                               npointing, nstation, nchan, npol, outpol_coh, invw, &gf,
                               detected_beam, data_buffer_coh, data_buffer_incoh,
@@ -529,9 +529,9 @@ int main(int argc, char **argv)
                 // Invert the PFB, if requested
                 if (opts.out_vdif)
                 {
-                    fprintf( stderr, "[%f] [%d/%d]   Inverting the PFB (full)\n", 
+                    fprintf( stderr, "[%f] [%d/%d]   Inverting the PFB (full)\n",
                                      NOW-begintime, file_no+1, nfiles);
-                    cu_invert_pfb_ord( detected_beam, file_no, npointing, 
+                    cu_invert_pfb_ord( detected_beam, file_no, npointing,
                             opts.sample_rate, nchan, npol, &gi, data_buffer_vdif );
                 }
 
@@ -539,7 +539,7 @@ int main(int argc, char **argv)
                 calc_check[file_no] = 1;
                 calc_total_time += clock() - start;
             }
-        }    
+        }
         // Write section ------------------------------------------------------
         if (thread_no == 2) //(thread_no > 1 && thread_no < npointing + 2)
         {
@@ -559,7 +559,7 @@ int main(int argc, char **argv)
                    data_buffer_incoh = data_buffer_incoh2;
                    data_buffer_vdif  = data_buffer_vdif2;
                 }
-                
+
                 // Waits until it's time to write
                 exit_check = 0;
                 while (1)
@@ -568,7 +568,7 @@ int main(int argc, char **argv)
                     if (calc_check[file_no] == 1) exit_check = 1;
                     if (exit_check == 1) break;
                 }
-                
+
                 clock_t start = clock();
 
                 for ( p = 0; p < npointing; p++)
@@ -597,13 +597,13 @@ int main(int argc, char **argv)
 
     fprintf( stderr, "[%f]  **FINISHED BEAMFORMING**\n", NOW-begintime);
     int read_ms = read_total_time * 1000 / CLOCKS_PER_SEC;
-    fprintf( stderr, "[%f]  Total read  processing time: %3d.%3d s\n", 
+    fprintf( stderr, "[%f]  Total read  processing time: %3d.%3d s\n",
                 NOW-begintime, read_ms/1000, read_ms%1000);
     int calc_ms = calc_total_time * 1000 / CLOCKS_PER_SEC;
-    fprintf( stderr, "[%f]  Total calc  processing time: %3d.%3d s\n", 
+    fprintf( stderr, "[%f]  Total calc  processing time: %3d.%3d s\n",
                 NOW-begintime, calc_ms/1000, calc_ms%1000);
     int write_ms = write_total_time * 1000 / CLOCKS_PER_SEC;
-    fprintf( stderr, "[%f]  Total write processing time: %3d.%3d s\n", 
+    fprintf( stderr, "[%f]  Total write processing time: %3d.%3d s\n",
                 NOW-begintime, write_ms/1000, write_ms%1000);
     fprintf( stderr, "[%f]  Starting clean-up\n", NOW-begintime);
 
@@ -612,7 +612,7 @@ int main(int argc, char **argv)
     destroy_complex_weights( complex_weights_array, npointing, nstation, nchan );
     destroy_invJi( invJi, npointing, nstation, nchan, npol );
     destroy_detected_beam( detected_beam, npointing, 3*opts.sample_rate, nchan );
-    
+
     destroy_metafits_info( &mi );
     free( data_buffer_coh    );
     free( data_buffer_incoh  );
@@ -625,7 +625,7 @@ int main(int argc, char **argv)
     cudaFreeHost( data_buffer_vdif2  );
     cudaFreeHost( data1 );
     cudaFreeHost( data2 );
-        
+
     free( opts.obsid        );
     free( opts.time_utc     );
     free( opts.pointings    );
