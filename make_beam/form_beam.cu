@@ -157,26 +157,29 @@ __global__ void beamform_kernel( ComplexDouble *JDx,
     if ((p == 0) && (ant == 0) && (c == 0) && (s == 0)) start = clock();*/
     
     // Calculate the beam and the noise floor
-    __shared__ double Ia[NSTATION];
-    __shared__ ComplexDouble Bx[NSTATION], By[NSTATION];
+    double Ia;
+    ComplexDouble Bx, By;
 
-    __shared__ ComplexDouble Nxx[NSTATION], Nxy[NSTATION],
-                            Nyy[NSTATION];//Nyx[NSTATION]
+    ComplexDouble Nxx, Nxy, Nyy;
+
+    double Ia_sum;
+    ComplexDouble Bx_sum, By_sum;
+    ComplexDouble Nxx_sum, Nxy_sum, Nyy_sum;
 
 
     /* Fix from Maceij regarding NaNs in output when running on Athena, 13 April 2018.
     Apparently the different compilers and architectures are treating what were 
     unintialised variables very differently */
     
-    Bx[ant]  = CMaked( 0.0, 0.0 );
-    By[ant]  = CMaked( 0.0, 0.0 );
+    Bx  = CMaked( 0.0, 0.0 );
+    By  = CMaked( 0.0, 0.0 );
 
-    Nxx[ant] = CMaked( 0.0, 0.0 );
-    Nxy[ant] = CMaked( 0.0, 0.0 );
+    Nxx = CMaked( 0.0, 0.0 );
+    Nxy = CMaked( 0.0, 0.0 );
     //Nyx[ant] = CMaked( 0.0, 0.0 );
-    Nyy[ant] = CMaked( 0.0, 0.0 );
+    Nyy = CMaked( 0.0, 0.0 );
 
-    if ((p == 0) && (incoh)) Ia[ant] = Iin[JD_IDX(s,c,ant,nc)];
+    if ((p == 0) && (incoh)) Ia = Iin[JD_IDX(s,c,ant,nc)];
 
     /*if ((p == 0) && (ant == 0) && (c == 0) && (s == 0))
     {
@@ -187,13 +190,12 @@ __global__ void beamform_kernel( ComplexDouble *JDx,
     
     // Calculate beamform products for each antenna, and then add them together
     // Calculate the coherent beam (B = J*W*D)
-    Bx[ant] = CMuld( W[W_IDX(p,ant,c,0,nc)], JDx[JD_IDX(s,c,ant,nc)] );
-    By[ant] = CMuld( W[W_IDX(p,ant,c,1,nc)], JDy[JD_IDX(s,c,ant,nc)] );
+    Bx = CMuld( W[W_IDX(p,ant,c,0,nc)], JDx[JD_IDX(s,c,ant,nc)] );
+    By = CMuld( W[W_IDX(p,ant,c,1,nc)], JDy[JD_IDX(s,c,ant,nc)] );
 
-    Nxx[ant] = CMuld( Bx[ant], CConjd(Bx[ant]) );
-    Nxy[ant] = CMuld( Bx[ant], CConjd(By[ant]) );
-    //Nyx[ant] = CMuld( By[ant], CConjd(Bx[ant]) );
-    Nyy[ant] = CMuld( By[ant], CConjd(By[ant]) );
+    Nxx = CMuld( Bx, CConjd(Bx) );
+    Nxy = CMuld( Bx, CConjd(By) );
+    Nyy = CMuld( By, CConjd(By) );
 
     /*if ((p == 0) && (ant == 0) && (c == 0) && (s == 0))
     {
@@ -206,23 +208,33 @@ __global__ void beamform_kernel( ComplexDouble *JDx,
     // A summation over an array is faster on a GPU if you add half on array 
     // to its other half as than can be done in parallel. Then this is repeated
     // with half of the previous array until the array is down to 1.
-    __syncthreads();
-    for ( int h_ant = nant / 2; h_ant > 0; h_ant = h_ant / 2 )
+    // This is made faster again by using the wraps (32 threads) cache memory
+    // through warp-level primitives such as __shfl_down_sync
+    unsigned mask = __ballot_sync(FULL_MASK, ant < nant);
+    if (ant < nant)
     {
-        if (ant < h_ant)
+        Bx_sum  = Bx;
+        By_sum  = By;
+        Nxx_sum = Nxx;
+        Nxy_sum = Nxy;
+        Nyy_sum = Nyy;
+        for (int offset = 16; offset > 0; offset /= 2)
         {
-            if ( (p == 0) && (incoh)) Ia[ant] += Ia[ant+h_ant];
-            Bx[ant]  = CAddd( Bx[ant],  Bx[ant  + h_ant] );
-            By[ant]  = CAddd( By[ant],  By[ant  + h_ant] );
-            Nxx[ant] = CAddd( Nxx[ant], Nxx[ant + h_ant] );
-            Nxy[ant] = CAddd( Nxy[ant], Nxy[ant + h_ant] );
-            //Nyx[ant]=CAddd( Nyx[ant], Nyx[ant + h_ant] );
-            Nyy[ant] = CAddd( Nyy[ant], Nyy[ant + h_ant] );
+            Bx_sum  += __shfl_down_sync(mask, Bx_sum,  offset);
+            By_sum  += __shfl_down_sync(mask, By_sum,  offset);
+            Nxx_sum += __shfl_down_sync(mask, Nxx_sum, offset);
+            Nxy_sum += __shfl_down_sync(mask, Nxy_sum, offset);
+            Nyy_sum += __shfl_down_sync(mask, Nyy_sum, offset);
         }
-        // below makes no difference so removed
-        // else return;
-        __syncthreads();
     }
+
+    if ((ant < nant) && (p == 0) && (incoh))
+    {
+        Ia_sum = Ia;
+        for (int offset = 16; offset > 0; offset /= 2)
+            Ia_sum  += __shfl_down_sync(mask, Ia_sum,  offset);
+    }
+    //__syncthreads();
 
     /*if ((p == 0) && (ant == 0) && (c == 0) && (s == 0))
     {
@@ -236,13 +248,13 @@ __global__ void beamform_kernel( ComplexDouble *JDx,
     // Only doing it for ant 0 so that it only prints once
     if ( ant == 0 )
     {
-        float bnXX = DETECT(Bx[0]) - CReald(Nxx[0]);
-        float bnYY = DETECT(By[0]) - CReald(Nyy[0]);
-        ComplexDouble bnXY = CSubd( CMuld( Bx[0], CConjd( By[0] ) ),
-                                    Nxy[0] );
+        float bnXX = DETECT(Bx_sum) - CReald(Nxx_sum);
+        float bnYY = DETECT(By_sum) - CReald(Nyy_sum);
+        ComplexDouble bnXY = CSubd( CMuld( Bx_sum, CConjd( By_sum ) ),
+                                    Nxy_sum );
 
         // The incoherent beam
-        if ( (p == 0) && (incoh)) I[I_IDX(s+soffset,c,nc)] = Ia[0];
+        if ( (p == 0) && (incoh)) I[I_IDX(s+soffset,c,nc)] = Ia_sum;
 
         // Stokes I, Q, U, V:
         C[C_IDX(p,s+soffset,0,c,ns,coh_pol,nc)] = invw*(bnXX + bnYY);
@@ -254,8 +266,8 @@ __global__ void beamform_kernel( ComplexDouble *JDx,
         }
 
         // The beamformed products
-        Bd[B_IDX(p,s+soffset,c,0,ns,nc)] = Bx[0];
-        Bd[B_IDX(p,s+soffset,c,1,ns,nc)] = By[0];
+        Bd[B_IDX(p,s+soffset,c,0,ns,nc)] = Bx_sum;
+        Bd[B_IDX(p,s+soffset,c,1,ns,nc)] = By_sum;
     }
     /*if ((p == 0) && (ant == 0) && (c == 0) && (s == 0))
     {

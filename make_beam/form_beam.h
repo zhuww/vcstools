@@ -16,6 +16,7 @@
 #define NPFB  4
 #define NREC  16
 #define NINC  4
+#define FULL_MASK 0xffffffff
 
 #define ANT2PFB(ant)    ((ant)>>5)                 /* pfb = ant/32           */
 #define ANT2INC(ant)    (((ant)>>3)&0x03)          /* inc = (ant/8) % 4      */
