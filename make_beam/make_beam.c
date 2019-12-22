@@ -81,6 +81,8 @@ int main(int argc, char **argv)
     opts.out_coh       = 0;  // Default = PSRFITS (coherent)   output turned OFF
     opts.out_vdif      = 0;  // Default = VDIF                 output turned OFF
     opts.out_summed    = 0;  // Default = output only Stokes I output turned OFF
+    opts.out_finer     = 1;  // Default = downsample by factor 1 (= do nothing)
+    opts.finer_taps    = 8;  // Number of taps to use in PFB
 
 
     // Variables for calibration settings
@@ -278,8 +280,10 @@ int main(int argc, char **argv)
     // Create structures for holding header information
     struct psrfits  *pf;
     struct psrfits  *pf_incoh;
-    pf = (struct psrfits *)malloc(npointing * sizeof(struct psrfits));
+    struct psrfits  *pf_finer;
+    pf       = (struct psrfits *)malloc(npointing * sizeof(struct psrfits));
     pf_incoh = (struct psrfits *)malloc(1 * sizeof(struct psrfits));
+    pf_finer = (struct psrfits *)malloc(npointing * sizeof(struct psrfits));
     vdif_header     vhdr;
     struct vdifinfo *vf;
     vf = (struct vdifinfo *)malloc(npointing * sizeof(struct vdifinfo));
@@ -292,12 +296,17 @@ int main(int argc, char **argv)
     // Populate the relevant header structs
     populate_psrfits_header( pf,       opts.metafits, opts.obsid,
             opts.time_utc, opts.sample_rate, opts.frequency, nchan,
-            opts.chan_width,outpol_coh, opts.rec_channel, delay_vals,
+            opts.chan_width, outpol_coh, opts.rec_channel, delay_vals,
             mi, npointing, 1 );
     populate_psrfits_header( pf_incoh, opts.metafits, opts.obsid,
             opts.time_utc, opts.sample_rate, opts.frequency, nchan,
             opts.chan_width, outpol_incoh, opts.rec_channel, delay_vals,
             mi, 1, 0 );
+    populate_psrfits_header( pf_finer, opts.metafits, opts.obsid,
+            opts.time_utc, opts.sample_rate / opts.out_finer,
+            opts.frequency, nchan * opts.out_finer,
+            opts.chan_width / opts.out_finer, outpol_coh, opts.rec_channel,
+            delay_vals, mi, npointing, 1 );
 
     populate_vdif_header( vf, &vhdr, opts.metafits, opts.obsid,
             opts.time_utc, opts.sample_rate, opts.frequency, nchan,
@@ -719,6 +728,15 @@ void usage() {
     fprintf(stderr, "\t-s, --summed               ");
     fprintf(stderr, "Turn on summed polarisations of the coherent output (only Stokes I) ");
     fprintf(stderr, "[default: OFF]\n");
+    fprintf(stderr, "\t-l, --fine=FACTOR[,TAPS]   ");
+    fprintf(stderr, "Turn on superfine frequency resolution. Increases frequency         ");
+    fprintf(stderr, "[default: OFF]\n");
+    fprintf(stderr, "\t                           ");
+    fprintf(stderr, "resolution (and decreases time resolution) by FACTOR. Uses PFB\n");
+    fprintf(stderr, "\t                           ");
+    fprintf(stderr, "with TAPS taps (default TAPS=8) and a Hanning-windowed filter.\n");
+    fprintf(stderr, "\t                           ");
+    fprintf(stderr, "Outputs result in PSRFITS format.\n");
 
     fprintf(stderr, "\n");
     fprintf(stderr, "MWA/VCS CONFIGURATION OPTIONS\n");
@@ -807,7 +825,7 @@ void make_beam_parse_cmdline(
 {
     if (argc > 1) {
 
-        int c;
+        int c, n;
         while (1) {
 
             static struct option long_options[] = {
@@ -818,6 +836,7 @@ void make_beam_parse_cmdline(
                 {"psrfits",         no_argument,       0, 'p'},
                 {"vdif",            no_argument,       0, 'v'},
                 {"summed",          no_argument,       0, 's'},
+                {"fine",            required_argument, 0, 'l'},
                 {"utc-time",        required_argument, 0, 'z'},
                 {"pointings",       required_argument, 0, 'P'},
                 {"data-location",   required_argument, 0, 'd'},
@@ -839,7 +858,7 @@ void make_beam_parse_cmdline(
 
             int option_index = 0;
             c = getopt_long( argc, argv,
-                             "a:b:B:C:d:e:f:F:hiJ:m:n:o:O:pP:r:svVw:W:z:",
+                             "a:b:B:C:d:e:f:F:hiJ:l:m:n:o:O:pP:r:svVw:W:z:",
                              long_options, &option_index);
             if (c == -1)
                 break;
@@ -884,6 +903,28 @@ void make_beam_parse_cmdline(
                     opts->cal.filename = strdup(optarg);
                     if (opts->cal.cal_type != RTS_BANDPASS)
                         opts->cal.cal_type = RTS;
+                    break;
+                case 'l':
+                    n = sscanf(optarg, "%d,%d", &(opts->out_finer),
+                                                &(opts->finer_taps));
+                    if (n == 0)
+                    {
+                        fprintf( stderr, "error: invalid argument to -l: "
+                                         "'%s'\n", optarg );
+                        usage();
+                        exit(EXIT_FAILURE);
+                    }
+
+                    // out_finer must divide into 10000 evenly, so as to keep
+                    // sample_rate an integer
+                    if ((opts->sample_rate / opts->out_finer)
+                            * opts->out_finer != opts->sample_rate)
+                    {
+                        fprintf( stderr, "error: -l FACTOR (=%d) must divide "
+                                         "into the sample rate (%d) evenly\n",
+                                         opts->out_finer, opts->sample_rate );
+                        exit(EXIT_FAILURE);
+                    }
                     break;
                 case 'm':
                     opts->metafits = strdup(optarg);
