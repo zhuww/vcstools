@@ -100,7 +100,8 @@ void populate_psrfits_header(
         struct delays  *delay_vals,
         struct metafits_info mi,
         int             npointing,
-        int             is_coherent )
+        int             is_coherent,
+        int             out_finer )
 {
     if ( !( outpol == 1 || outpol == 4 ) )
     {
@@ -254,10 +255,11 @@ void populate_psrfits_header(
             int ch = atoi(rec_channel);
             if (is_coherent)
             {
-                sprintf(pf[p].basefilename, "%s_%s/%s_%s_%s_%s_ch%03d",
+                sprintf(pf[p].basefilename, "%s_%s/%s_%s_%s_%s_ch%03d_%dHz",
                         pf[p].hdr.ra_str, pf[p].hdr.dec_str,
                         pf[p].hdr.project_id, pf[p].hdr.source, 
-                        pf[p].hdr.ra_str, pf[p].hdr.dec_str, ch);
+                        pf[p].hdr.ra_str, pf[p].hdr.dec_str, ch,
+                        nchan/out_finer);
             }
             else
             {

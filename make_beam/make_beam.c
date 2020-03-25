@@ -271,7 +271,7 @@ int main(int argc, char **argv)
             opts.sample_rate,   // = 10000 samples per sec
             opts.time_utc,      // utc time string
             0.0,                // seconds offset from time_utc at which to calculate delays
-            delay_vals,        // Populate psrfits header info
+            delay_vals,         // Populate psrfits header info
             &mi,                // Struct containing info from metafits file
             NULL,               // complex weights array (ignore this time)
             NULL                // invJi array           (ignore this time)
@@ -297,16 +297,16 @@ int main(int argc, char **argv)
     populate_psrfits_header( pf,       opts.metafits, opts.obsid,
             opts.time_utc, opts.sample_rate, opts.frequency, nchan,
             opts.chan_width, outpol_coh, opts.rec_channel, delay_vals,
-            mi, npointing, 1 );
+            mi, npointing, 1, 1 );
     populate_psrfits_header( pf_incoh, opts.metafits, opts.obsid,
             opts.time_utc, opts.sample_rate, opts.frequency, nchan,
             opts.chan_width, outpol_incoh, opts.rec_channel, delay_vals,
-            mi, 1, 0 );
+            mi, 1, 0, 1 );
     populate_psrfits_header( pf_finer, opts.metafits, opts.obsid,
             opts.time_utc, opts.sample_rate / opts.out_finer,
             opts.frequency, nchan * opts.out_finer,
             opts.chan_width / opts.out_finer, outpol_coh, opts.rec_channel,
-            delay_vals, mi, npointing, 1 );
+            delay_vals, mi, npointing, 1, opts.out_finer );
 
     populate_vdif_header( vf, &vhdr, opts.metafits, opts.obsid,
             opts.time_utc, opts.sample_rate, opts.frequency, nchan,

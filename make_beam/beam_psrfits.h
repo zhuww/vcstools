@@ -26,7 +26,8 @@ void populate_psrfits_header(
         struct delays  *delay_vals,
         struct metafits_info mi,
         int             npointing,
-        int             is_coherent );
+        int             is_coherent.
+        int             out_finer );
 
 void correct_psrfits_stt( struct psrfits *pf );
 
